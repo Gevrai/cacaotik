@@ -12,7 +12,23 @@
     <img id="connect-qr" alt="QR code to connect controllers" />
     <div id="connect-url">loading…</div>
   </div>
+  <audio id="ost" src="/assets/ost/CacaoTown.mp3" loop preload="auto"></audio>
   <script src="/phaser/phaser.min.js"></script>
+  <script>
+    // Start OST on first user interaction (browser autoplay policy)
+    (function () {
+      const ost = document.getElementById('ost');
+      function tryPlay() {
+        ost.play().catch(() => {});
+        window.removeEventListener('click', tryPlay);
+        window.removeEventListener('keydown', tryPlay);
+      }
+      ost.play().catch(() => {
+        window.addEventListener('click', tryPlay);
+        window.addEventListener('keydown', tryPlay);
+      });
+    })();
+  </script>
   <script>
     // ── Shared state (updated by WebSocket, read by Phaser scene) ──────────
     let players = {};
