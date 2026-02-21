@@ -1,0 +1,22 @@
+{
+    "activeFile": "",
+    "expandedProjectPaths": [
+    ],
+    "fileStates": {
+        "tilemap_packed.tsx": {
+            "scaleInDock": 1
+        }
+    },
+    "last.externalTilesetPath": "/home/gejora/Documents/gorockit-jam/public/assets",
+    "last.imagePath": "/home/gejora/Documents/gorockit-jam/public/assets",
+    "openFiles": [
+    ],
+    "project": "map.tiled-project",
+    "recentFiles": [
+    ],
+    "tileset.lastUsedFormat": "tsx",
+    "tileset.tileSize": {
+        "height": 16,
+        "width": 16
+    }
+}
