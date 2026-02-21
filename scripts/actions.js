@@ -1,3 +1,11 @@
+const CACAOLO_SFX = [
+  'general_1.mp3', 'general_2.mp3',
+  'greeting_1.mp3', 'greeting_2.mp3', 'greeting_3.mp3',
+  'happy_1.mp3', 'happy_2.mp3',
+  'laughing_1.mp3', 'laughing_2.mp3',
+  'singing_1.mp3', 'singing_2.mp3',
+];
+
 const ACTION_LIBRARY = {
   plant_seed: {
     key: 'plant_seed',
@@ -58,6 +66,12 @@ const ACTION_LIBRARY = {
     title: 'Récolter le caca en chocolat',
     targetName: 'Caca chocolaté',
     durationMs: 3000,
+  },
+  greet_player: {
+    key: 'greet_player',
+    title: 'Saluer',
+    targetName: 'Joueur',
+    durationMs: 1500,
   },
 };
 
@@ -277,6 +291,7 @@ function createActionManager(options = {}) {
       canInteract: extras.canInteract !== false,
       isVisible: extras.isVisible !== false,
       blockedReason: extras.blockedReason || null,
+      targetPlayerId: extras.targetPlayerId ?? null,
     };
   }
 
@@ -422,6 +437,25 @@ function createActionManager(options = {}) {
     });
   }
 
+  function getGreetPlayerAction(playerId, player, playersById) {
+    const nearbyPlayer = Object.values(playersById).find(other => {
+      if (other.id === player.id) return false;
+      const dx = Math.abs(other.gridX - player.gridX);
+      const dy = Math.abs(other.gridY - player.gridY);
+      return Math.max(dx, dy) <= 1;
+    });
+
+    return toAction(actionLibrary.greet_player, {
+      actorId: playerId,
+      gridX: nearbyPlayer ? nearbyPlayer.gridX : null,
+      gridY: nearbyPlayer ? nearbyPlayer.gridY : null,
+      isVisible: Boolean(nearbyPlayer),
+      canInteract: Boolean(nearbyPlayer),
+      targetPlayerId: nearbyPlayer ? nearbyPlayer.id : null,
+      blockedReason: nearbyPlayer ? null : 'Approche-toi d\'un autre joueur.',
+    });
+  }
+
   function getFeedRabbitAction(playerId, player) {
     const inventory = getInventoryForPlayerId(playerId);
     const rabbit = getNearestRabbitForPlayer(player);
@@ -469,6 +503,7 @@ function createActionManager(options = {}) {
       pet_llama: getPetLlamaAction(playerId, player),
       feed_rabbit: getFeedRabbitAction(playerId, player),
       harvest_choco: getHarvestChocoAction(playerId, player),
+      greet_player: getGreetPlayerAction(playerId, player, playersById),
       activeAction,
     };
   }
@@ -566,6 +601,8 @@ function createActionManager(options = {}) {
     const inventory = getInventoryForPlayerId(playerId, playersById);
     clearCompletionTimer(playerId);
     delete inProgressByPlayer[playerId];
+
+    let sfxPayload = {};
 
     if (success && finishedAction && inventory) {
       if (finishedAction.key === 'fetch_water') {
@@ -672,6 +709,43 @@ function createActionManager(options = {}) {
           inventory.money += 500;
         }
       }
+
+      if (finishedAction.key === 'fetch_water') {
+        sfxPayload = {
+          sfxFile: '/assets/sfx/water.mp3',
+          sfxTargetIds: [playerId],
+        };
+      }
+
+      if (finishedAction.key === 'pet_llama') {
+        sfxPayload = {
+          sfxFile: '/assets/sfx/llama.mp3',
+          sfxTargetIds: [playerId],
+        };
+      }
+
+      if (finishedAction.key === 'burn_tree') {
+        sfxPayload = {
+          sfxFile: '/assets/sfx/fire_swoosh.mp3',
+          sfxExtraFile: '/assets/sfx/fire_burning.mp3',
+          sfxTargetIds: [playerId],
+        };
+      }
+
+      if (finishedAction.key === 'feed_rabbit') {
+        sfxPayload = {
+          sfxFile: '/assets/sfx/rabbit.mp3',
+          sfxTargetIds: [playerId],
+        };
+      }
+
+      if (finishedAction.key === 'greet_player') {
+        const sfxFile = CACAOLO_SFX[Math.floor(Math.random() * CACAOLO_SFX.length)];
+        sfxPayload = {
+          sfxFile: `/assets/sfx/cacaolo/${sfxFile}`,
+          sfxTargetIds: [playerId, finishedAction.targetPlayerId].filter(id => id != null),
+        };
+      }
     }
 
     onActionResult({
@@ -686,6 +760,7 @@ function createActionManager(options = {}) {
       seeds: inventory ? inventory.seeds : 0,
       cacao: inventory ? inventory.cacao : 0,
       money: inventory ? inventory.money : 0,
+      ...sfxPayload,
     });
 
     emitActionChange(playersById);
@@ -770,6 +845,15 @@ function createActionManager(options = {}) {
         && (isAdjacent8(player, tile.targetGridX, tile.targetGridY)
           || (player.gridX === tile.targetGridX && player.gridY === tile.targetGridY))
       ));
+    }
+
+    if (action.key === 'greet_player') {
+      if (!action.targetPlayerId) return false;
+      const target = playersById[action.targetPlayerId];
+      if (!target) return false;
+      const dx = Math.abs(target.gridX - player.gridX);
+      const dy = Math.abs(target.gridY - player.gridY);
+      return Math.max(dx, dy) <= 1;
     }
 
     return true;
@@ -872,6 +956,7 @@ function createActionManager(options = {}) {
       if (actionToStart.key === 'pet_llama') successMessage = 'Le lama adore les papouilles.';
       if (actionToStart.key === 'feed_rabbit') successMessage = 'Le lapin a mangé 1 cacao.';
       if (actionToStart.key === 'harvest_choco') successMessage = '+500$ pour le caca en chocolat.';
+      if (actionToStart.key === 'greet_player') successMessage = 'Salutations !';
 
       finishAction(
         playerId,

@@ -100,6 +100,7 @@ All messages are JSON.
 | `move` | `dir: "up"\|"down"\|"left"\|"right"\|"up-left"\|"up-right"\|"down-left"\|"down-right"` | Set player velocity in given direction (sent once on direction change) |
 | `stop` | _(none)_ | Zero player velocity (sent on joystick release) |
 | `interact` | `key: "plant_seed"\|"fetch_seed"\|"fetch_water"\|"water_plants"\|"talk_bees"\|"harvest_cacao"\|"burn_tree"\|"pet_llama"\|"feed_rabbit"\|"harvest_choco"` | Attempt the selected action button |
+| `interact` | `key: "plant_seed"\|"fetch_seed"\|"fetch_water"\|"water_plants"\|"talk_bees"\|"harvest_cacao"\|"burn_tree"\|"pet_llama"\|"feed_rabbit"\|"greet_player"` | Attempt the selected action button |
 
 ### Server → Client (broadcast to all)
 
@@ -109,6 +110,8 @@ All messages are JSON.
 | `state` | `players: [{id, name, character, color, x, y, gridX, gridY}]` | Full player state, broadcast by game loop (~20fps) while any player is moving |
 | `action_update` | `actionsByPlayer: { [playerId]: { plant_seed, fetch_seed, fetch_water, water_plants, talk_bees, harvest_cacao, burn_tree, pet_llama, feed_rabbit, harvest_choco, activeAction } }, inProgressByPlayer: { [playerId]: action }, hasWaterByPlayer: { [playerId]: boolean }, seedsByPlayer: { [playerId]: number }, cacaoByPlayer: { [playerId]: number }, moneyByPlayer: { [playerId]: number }, plants: [{id,gridX,gridY,stage}], beeFlights: [{id,targetGridX,targetGridY,startedAt,durationMs}], fireBursts: [{id,targetGridX,targetGridY,startedAt,durationMs}], rabbitCacaoTiles: [{id,targetGridX,targetGridY}], serverTime` | Per-player action buttons state + active progress + world farming state. Each action entry includes `canInteract`, `isVisible`, and `blockedReason`. |
 | `action_result` | `actionId, actionKey, success, message, playerId, targetGridX, targetGridY, hasWater, seeds, cacao, money` | Result/feedback after interact attempts or completion (includes concerned player inventory) |
+| `action_update` | `actionsByPlayer: { [playerId]: { plant_seed, fetch_seed, fetch_water, water_plants, talk_bees, harvest_cacao, burn_tree, pet_llama, feed_rabbit, activeAction } }, inProgressByPlayer: { [playerId]: action }, hasWaterByPlayer: { [playerId]: boolean }, seedsByPlayer: { [playerId]: number }, cacaoByPlayer: { [playerId]: number }, plants: [{id,gridX,gridY,stage}], beeFlights: [{id,targetGridX,targetGridY,startedAt,durationMs}], fireBursts: [{id,targetGridX,targetGridY,startedAt,durationMs}], rabbitCacaoTiles: [{id,targetGridX,targetGridY}], serverTime` | Per-player action buttons state + active progress + world farming state. Each action entry includes `canInteract`, `isVisible`, and `blockedReason`. |
+| `action_result` | `actionId, success, message, playerId, hasWater, seeds, cacao, sfxFile?, sfxTargetIds?` | Result/feedback after interact attempts or completion. `sfxFile` and `sfxTargetIds` are present on successful `greet_player` — each client plays the sound if its id is in `sfxTargetIds`. |
 | `reload_map` | `file: string` | Sent when a .tmj file changes; display restarts its Phaser scene |
 
 ---
