@@ -24,6 +24,40 @@ body {
   border: 3px solid #fff;
   margin: 0 auto;
 }
+#action-card {
+  width: min(94vw, 340px);
+  border: 2px solid #555;
+  border-radius: 12px;
+  background: #2a2a4a;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+#action-role {
+  font-size: 13px;
+  color: #aaa;
+}
+#action-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+#action-target,
+#action-timer {
+  font-size: 14px;
+  color: #ddd;
+}
+#btn-interact {
+  background: #4a4a8a;
+  border: 2px solid #aaa;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 20px;
+  font-family: monospace;
+  padding: 12px;
+}
+#btn-interact:disabled {
+  opacity: 0.45;
+}
 #joystick {
   width: 240px;
   height: 240px;

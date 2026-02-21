@@ -27,7 +27,17 @@ Cacaotique is a chaotic co-op farming/cooking game for a 6h game jam.
     ├── Tracks game state (player positions, etc.)
     ├── Receives input messages from mobile clients
     ├── Broadcasts full game state to all connected clients
+    ├── Coordinates action assignments/progress with /scripts/actions.js
     └── Starts map-watcher on /public/assets/ for hot-reload
+
+[Movement module — /scripts/movement.js]
+    └── Applies move directions with grid bounds + collision checks
+
+[Actions module — /scripts/actions.js]
+    ├── Stores action library (map tasks)
+    ├── Assigns requester player (A) + actor player (B)
+    ├── Validates interact at target position
+    └── Runs action completion timer and rotates to next task
 
 [Map watcher — /scripts/map-watcher.js]
     └── Watches /public/assets/ for .tmj changes, calls back with filename
@@ -56,6 +66,8 @@ gorockit-jam/
 ├── server.js                  # Node.js express server + HTTP bootstrap
 ├── scripts/
 │   ├── dev.js                 # Dev startup script (prints LAN URLs, starts server)
+│   ├── actions.js             # Action assignment + interaction/timer logic
+│   ├── movement.js            # Movement rules (directions, bounds, collisions)
 │   ├── websocket.js           # WebSocket setup + game state logic + map hot-reload
 │   └── map-watcher.js         # fs.watch wrapper for .tmj files in public/assets/
 ├── public/
@@ -80,6 +92,7 @@ All messages are JSON.
 | `type` | Fields | Description |
 |--------|--------|-------------|
 | `move` | `dir: "up"\|"down"\|"left"\|"right"\|"up-left"\|"up-right"\|"down-left"\|"down-right"` | Move player one grid step |
+| `interact` | _(none)_ | Attempt interaction for current assigned action |
 
 ### Server → Client (broadcast to all)
 
@@ -87,6 +100,8 @@ All messages are JSON.
 |--------|--------|-------------|
 | `init` | `id, color, gridX, gridY, gridSize, gridCols, gridRows` | Sent once on connection to the connecting client |
 | `state` | `players: [{id, color, gridX, gridY}]` | Full player state, sent after every change |
+| `action_update` | `action: {id,key,title,description,targetName,gridX,gridY,durationMs,status,requesterId,actorId,startedAt}\|null, serverTime` | Current cooperative action state (or null if unavailable) |
+| `action_result` | `actionId, success, message` | Result/feedback after interact attempts or completion |
 | `reload_map` | `file: string` | Sent when a .tmj file changes; display restarts its Phaser scene |
 
 ---
@@ -102,6 +117,8 @@ All messages are JSON.
 ## Conventions
 
 - Game state lives entirely on the server (`scripts/websocket.js`). Clients are dumb input/output terminals.
+- Movement/collision rules live in `scripts/movement.js` and are applied server-side.
+- Action assignment/timer/validation live in `scripts/actions.js` and are applied server-side.
 - The display (`server.html`) only renders what it receives — no local simulation.
 - Player colors are assigned server-side in order: red, blue, green, orange.
 - Max 4 players (limited by color array).
@@ -110,7 +127,6 @@ All messages are JSON.
 
 ## What's Not Built Yet
 
-- Interact action / stations (harvest, break pod, etc.)
 - Items / inventory
 - Rhythm timing windows
 - Chaos events

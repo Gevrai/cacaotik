@@ -1,6 +1,8 @@
 const { WebSocketServer } = require('ws');
 const path = require('path');
 const { watchMaps } = require('./map-watcher');
+const { applyPlayerMove } = require('./movement');
+const { createActionManager } = require('./actions');
 
 // Grid config
 const GRID_SIZE = 32;
@@ -14,6 +16,29 @@ function setupWebSocket(server) {
   const players = {}; // id -> { id, color, gridX, gridY, ws }
   let nextId = 1;
 
+  function broadcast(payload) {
+    const msg = JSON.stringify(payload);
+    for (const ws of wss.clients) {
+      if (ws.readyState === 1) ws.send(msg);
+    }
+  }
+
+  const actionManager = createActionManager({
+    onActionChange: (action) => {
+      broadcast({
+        type: 'action_update',
+        action,
+        serverTime: Date.now(),
+      });
+    },
+    onActionResult: (result) => {
+      broadcast({
+        type: 'action_result',
+        ...result,
+      });
+    },
+  });
+
   function broadcastState() {
     const state = {
       type: 'state',
@@ -24,9 +49,7 @@ function setupWebSocket(server) {
         gridY: p.gridY,
       })),
     };
-    for (const ws of wss.clients) {
-      if (ws.readyState === 1) ws.send(JSON.stringify(state));
-    }
+    broadcast(state);
   }
 
   wss.on('connection', (ws) => {
@@ -52,8 +75,15 @@ function setupWebSocket(server) {
       gridRows: GRID_ROWS,
     }));
 
+    ws.send(JSON.stringify({
+      type: 'action_update',
+      action: actionManager.getPublicActionState(),
+      serverTime: Date.now(),
+    }));
+
     console.log(`Player ${id} connected. Total: ${Object.keys(players).length}`);
     broadcastState();
+    actionManager.handleRosterChange(players);
 
     ws.on('message', (raw) => {
       let msg;
@@ -62,23 +92,20 @@ function setupWebSocket(server) {
       if (msg.type === 'move') {
         const p = players[id];
         if (!p) return;
-        const dir = msg.dir;
-        let nx = p.gridX;
-        let ny = p.gridY;
-        if (dir === 'up') ny -= 1;
-        if (dir === 'up-right') { nx += 1; ny -= 1; }
-        if (dir === 'down') ny += 1;
-        if (dir === 'down-right') { nx += 1; ny += 1; }
-        if (dir === 'left') nx -= 1;
-        if (dir === 'down-left') { nx -= 1; ny += 1; }
-        if (dir === 'right') nx += 1;
-        if (dir === 'up-left') { nx -= 1; ny -= 1; }
+        const result = applyPlayerMove(p, msg.dir, {
+          gridCols: GRID_COLS,
+          gridRows: GRID_ROWS,
+          playersById: players,
+          blockedCells: null,
+        });
 
-        nx = Math.max(0, Math.min(GRID_COLS - 1, nx));
-        ny = Math.max(0, Math.min(GRID_ROWS - 1, ny));
-        p.gridX = nx;
-        p.gridY = ny;
-        broadcastState();
+        if (result.moved) {
+          broadcastState();
+        }
+      }
+
+      if (msg.type === 'interact') {
+        actionManager.tryInteract(id, players);
       }
     });
 
@@ -86,6 +113,7 @@ function setupWebSocket(server) {
       console.log(`Player ${id} disconnected.`);
       delete players[id];
       broadcastState();
+      actionManager.handleRosterChange(players);
     });
   });
 

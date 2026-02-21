@@ -10,6 +10,14 @@
   <div id="info">connecting…</div>
   <div id="dot"></div>
 
+  <div id="action-card">
+    <div id="action-role">En attente d'action…</div>
+    <div id="action-title">—</div>
+    <div id="action-target">—</div>
+    <div id="action-timer">—</div>
+    <button id="btn-interact" type="button">Interagir</button>
+  </div>
+
   <div id="joystick" aria-label="movement joystick">
     <div id="joystick-base">
       <div id="joystick-stick"></div>
@@ -28,9 +36,15 @@
     const joystickEl = document.getElementById('joystick');
     const joystickBaseEl = document.getElementById('joystick-base');
     const joystickStickEl = document.getElementById('joystick-stick');
+    const actionRoleEl = document.getElementById('action-role');
+    const actionTitleEl = document.getElementById('action-title');
+    const actionTargetEl = document.getElementById('action-target');
+    const actionTimerEl = document.getElementById('action-timer');
+    const interactBtnEl = document.getElementById('btn-interact');
 
     let myId = null;
     let myColor = null;
+    let currentAction = null;
 
     ws.onopen = () => { statusEl.textContent = 'connected'; };
     ws.onclose = () => { statusEl.textContent = 'disconnected'; infoEl.textContent = 'lost connection'; };
@@ -44,6 +58,15 @@
         dotEl.style.background = myColor;
         statusEl.textContent = 'ready';
       }
+
+      if (msg.type === 'action_update') {
+        currentAction = msg.action;
+        renderAction();
+      }
+
+      if (msg.type === 'action_result') {
+        statusEl.textContent = msg.message || 'action update';
+      }
     };
 
     function sendMove(dir) {
@@ -51,7 +74,52 @@
       ws.send(JSON.stringify({ type: 'move', dir }));
     }
 
-    const SEND_INTERVAL_MS = 300;
+    function sendInteract() {
+      if (ws.readyState !== 1) return;
+      ws.send(JSON.stringify({ type: 'interact' }));
+    }
+
+    function getMyRole(action) {
+      if (!myId || !action) return 'none';
+      if (action.requesterId === myId) return 'requester';
+      if (action.actorId === myId) return 'actor';
+      return 'spectator';
+    }
+
+    function renderAction() {
+      if (!currentAction) {
+        actionRoleEl.textContent = 'En attente d\'action…';
+        actionTitleEl.textContent = '—';
+        actionTargetEl.textContent = '—';
+        actionTimerEl.textContent = '—';
+        interactBtnEl.disabled = true;
+        return;
+      }
+
+      const role = getMyRole(currentAction);
+      if (role === 'requester') {
+        actionRoleEl.textContent = `Tu demandes au joueur ${currentAction.actorId} :`;
+      } else if (role === 'actor') {
+        actionRoleEl.textContent = 'Action à faire :';
+      } else {
+        actionRoleEl.textContent = `Action en cours (joueur ${currentAction.actorId})`;
+      }
+
+      actionTitleEl.textContent = currentAction.title;
+      actionTargetEl.textContent = `Lieu: ${currentAction.targetName} (${currentAction.gridX}, ${currentAction.gridY})`;
+
+      if (currentAction.status === 'in_progress' && currentAction.startedAt) {
+        const elapsed = Date.now() - currentAction.startedAt;
+        const remainingMs = Math.max(0, currentAction.durationMs - elapsed);
+        actionTimerEl.textContent = `Timer: ${(remainingMs / 1000).toFixed(1)}s`;
+      } else {
+        actionTimerEl.textContent = `Timer: ${(currentAction.durationMs / 1000).toFixed(1)}s`;
+      }
+
+      interactBtnEl.disabled = !(role === 'actor' && currentAction.status === 'pending');
+    }
+
+    const SEND_INTERVAL_MS = 400;
     const DEAD_ZONE = 18;
     const MAX_RADIUS = 70;
     const SNAP_RADIUS = 64;
@@ -156,7 +224,16 @@
       resetJoystick();
     });
 
+    interactBtnEl.addEventListener('click', sendInteract);
+
+    setInterval(() => {
+      if (currentAction && currentAction.status === 'in_progress') {
+        renderAction();
+      }
+    }, 100);
+
     resetJoystick();
+    renderAction();
   </script>
 </body>
 </html>
