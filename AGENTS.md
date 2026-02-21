@@ -36,7 +36,7 @@ Cacaotique is a chaotic co-op farming/cooking game for a 6h game jam.
     └── Phaser 3 game view: loads Tiled map, renders players, hot-reloads on reload_map
 
 [Mobile controller — /public/index.html  (root)]
-    └── D-pad HTML page, connects via WS, sends input, shows player color
+    └── Joystick HTML page, connects via WS, sends input, shows player color
 ```
 
 ## Endpoints
@@ -79,7 +79,7 @@ All messages are JSON.
 
 | `type` | Fields | Description |
 |--------|--------|-------------|
-| `move` | `dir: "up"\|"down"\|"left"\|"right"` | Move player one grid step |
+| `move` | `dir: "up"\|"down"\|"left"\|"right"\|"up-left"\|"up-right"\|"down-left"\|"down-right"` | Move player one grid step |
 
 ### Server → Client (broadcast to all)
 

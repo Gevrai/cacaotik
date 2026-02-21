@@ -66,9 +66,13 @@ function setupWebSocket(server) {
         let nx = p.gridX;
         let ny = p.gridY;
         if (dir === 'up') ny -= 1;
+        if (dir === 'up-right') { nx += 1; ny -= 1; }
         if (dir === 'down') ny += 1;
+        if (dir === 'down-right') { nx += 1; ny += 1; }
         if (dir === 'left') nx -= 1;
+        if (dir === 'down-left') { nx -= 1; ny += 1; }
         if (dir === 'right') nx += 1;
+        if (dir === 'up-left') { nx -= 1; ny -= 1; }
 
         nx = Math.max(0, Math.min(GRID_COLS - 1, nx));
         ny = Math.max(0, Math.min(GRID_ROWS - 1, ny));

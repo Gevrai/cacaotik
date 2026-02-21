@@ -10,16 +10,10 @@
   <div id="info">connecting…</div>
   <div id="dot"></div>
 
-  <div class="dpad">
-    <div class="btn empty"></div>
-    <div class="btn" id="btn-up"   data-dir="up">▲</div>
-    <div class="btn empty"></div>
-    <div class="btn" id="btn-left" data-dir="left">◀</div>
-    <div class="btn empty"></div>
-    <div class="btn" id="btn-right" data-dir="right">▶</div>
-    <div class="btn empty"></div>
-    <div class="btn" id="btn-down"  data-dir="down">▼</div>
-    <div class="btn empty"></div>
+  <div id="joystick" aria-label="movement joystick">
+    <div id="joystick-base">
+      <div id="joystick-stick"></div>
+    </div>
   </div>
 
   <div id="status">—</div>
@@ -31,6 +25,9 @@
     const infoEl = document.getElementById('info');
     const dotEl = document.getElementById('dot');
     const statusEl = document.getElementById('status');
+    const joystickEl = document.getElementById('joystick');
+    const joystickBaseEl = document.getElementById('joystick-base');
+    const joystickStickEl = document.getElementById('joystick-stick');
 
     let myId = null;
     let myColor = null;
@@ -54,30 +51,112 @@
       ws.send(JSON.stringify({ type: 'move', dir }));
     }
 
-    // Button events — support both touch and mouse
-    document.querySelectorAll('.btn[data-dir]').forEach(btn => {
-      const dir = btn.dataset.dir;
+    const SEND_INTERVAL_MS = 300;
+    const DEAD_ZONE = 18;
+    const MAX_RADIUS = 70;
+    const SNAP_RADIUS = 64;
 
-      // Repeat interval while held
-      let interval = null;
+    let pointerId = null;
+    let activeDir = null;
+    let moveInterval = null;
 
-      function startMove() {
-        sendMove(dir);
-        btn.classList.add('pressed');
-        interval = setInterval(() => sendMove(dir), 150);
+    function setStickPosition(x, y) {
+      joystickStickEl.style.transform = `translate(${x}px, ${y}px)`;
+    }
+
+    function resetJoystick() {
+      activeDir = null;
+      setStickPosition(0, 0);
+      if (moveInterval) {
+        clearInterval(moveInterval);
+        moveInterval = null;
       }
-      function stopMove() {
-        btn.classList.remove('pressed');
-        clearInterval(interval);
-        interval = null;
+      joystickBaseEl.classList.remove('active');
+    }
+
+    function vectorToDirection(dx, dy) {
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+      if (angle >= -22.5 && angle < 22.5) return 'right';
+      if (angle >= 22.5 && angle < 67.5) return 'down-right';
+      if (angle >= 67.5 && angle < 112.5) return 'down';
+      if (angle >= 112.5 && angle < 157.5) return 'down-left';
+      if (angle >= 157.5 || angle < -157.5) return 'left';
+      if (angle >= -157.5 && angle < -112.5) return 'up-left';
+      if (angle >= -112.5 && angle < -67.5) return 'up';
+      return 'up-right';
+    }
+
+    function updateFromPointer(clientX, clientY) {
+      const rect = joystickBaseEl.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+
+      let dx = clientX - centerX;
+      let dy = clientY - centerY;
+
+      const distance = Math.hypot(dx, dy);
+      if (distance > MAX_RADIUS) {
+        const scale = MAX_RADIUS / distance;
+        dx *= scale;
+        dy *= scale;
       }
 
-      btn.addEventListener('touchstart', (e) => { e.preventDefault(); startMove(); });
-      btn.addEventListener('touchend',   (e) => { e.preventDefault(); stopMove(); });
-      btn.addEventListener('mousedown',  startMove);
-      btn.addEventListener('mouseup',    stopMove);
-      btn.addEventListener('mouseleave', stopMove);
+      if (distance < DEAD_ZONE) {
+        activeDir = null;
+        setStickPosition(0, 0);
+        return;
+      }
+
+      const angle = Math.atan2(dy, dx);
+      const snappedAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+      const snappedX = Math.cos(snappedAngle) * SNAP_RADIUS;
+      const snappedY = Math.sin(snappedAngle) * SNAP_RADIUS;
+      setStickPosition(snappedX, snappedY);
+
+      activeDir = vectorToDirection(dx, dy);
+    }
+
+    function startSendingLoop() {
+      if (moveInterval) return;
+      moveInterval = setInterval(() => {
+        if (activeDir) sendMove(activeDir);
+      }, SEND_INTERVAL_MS);
+    }
+
+    joystickEl.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      pointerId = e.pointerId;
+      joystickBaseEl.classList.add('active');
+      joystickEl.setPointerCapture(pointerId);
+      updateFromPointer(e.clientX, e.clientY);
+      if (activeDir) sendMove(activeDir);
+      startSendingLoop();
     });
+
+    joystickEl.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== pointerId) return;
+      e.preventDefault();
+      updateFromPointer(e.clientX, e.clientY);
+    });
+
+    function stopPointer(e) {
+      if (e.pointerId !== pointerId) return;
+      if (joystickEl.hasPointerCapture(pointerId)) {
+        joystickEl.releasePointerCapture(pointerId);
+      }
+      pointerId = null;
+      resetJoystick();
+    }
+
+    joystickEl.addEventListener('pointerup', stopPointer);
+    joystickEl.addEventListener('pointercancel', stopPointer);
+    joystickEl.addEventListener('pointerleave', (e) => {
+      if (e.pointerId !== pointerId) return;
+      resetJoystick();
+    });
+
+    resetJoystick();
   </script>
 </body>
 </html>

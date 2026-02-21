@@ -24,27 +24,35 @@ body {
   border: 3px solid #fff;
   margin: 0 auto;
 }
-.dpad {
+#joystick {
+  width: 240px;
+  height: 240px;
   display: grid;
-  grid-template-columns: repeat(3, 72px);
-  grid-template-rows: repeat(3, 72px);
-  gap: 6px;
+  place-items: center;
+  touch-action: none;
 }
-.btn {
+#joystick-base {
+  width: 210px;
+  height: 210px;
+  border-radius: 50%;
+  border: 3px solid #555;
   background: #2a2a4a;
-  border: 2px solid #555;
-  border-radius: 12px;
-  color: #fff;
-  font-size: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
+  position: relative;
+  display: grid;
+  place-items: center;
 }
-.btn:active, .btn.pressed {
-  background: #4a4a8a;
+#joystick-base.active {
   border-color: #aaa;
 }
-.btn.empty { background: transparent; border: none; pointer-events: none; }
+#joystick-stick {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  background: #4a4a8a;
+  position: absolute;
+  top: calc(50% - 36px);
+  left: calc(50% - 36px);
+  transform: translate(0, 0);
+}
 #status { font-size: 13px; color: #888; }
