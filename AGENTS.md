@@ -19,6 +19,10 @@ Cacaotique is a chaotic co-op farming/cooking game for a 6h game jam.
 ```
 [Node.js server — server.js]
     ├── Serves static files from /public via express
+    ├── Creates shared HTTP server
+    └── Delegates WebSocket setup to /scripts/websocket.js
+
+[WebSocket module — /scripts/websocket.js]
     ├── Opens a WebSocket server on the same HTTP port
     ├── Tracks game state (player positions, etc.)
     ├── Receives input messages from mobile clients
@@ -44,8 +48,10 @@ Cacaotique is a chaotic co-op farming/cooking game for a 6h game jam.
 
 ```
 gorockit-jam/
-├── server.js                  # Node.js WS + express server, game state logic
-├── start.sh                   # Startup script — detects LAN IP, prints URLs
+├── server.js                  # Node.js express server + HTTP bootstrap
+├── scripts/
+│   ├── dev.js                 # Dev startup script (prints LAN URLs, starts server)
+│   └── websocket.js           # WebSocket setup + game state logic
 ├── public/
 │   ├── index.html             # Mobile controller (D-pad)
 │   └── server.html            # Game display (canvas)
@@ -85,7 +91,7 @@ All messages are JSON.
 
 ## Conventions
 
-- Game state lives entirely on the server (`server.js`). Clients are dumb input/output terminals.
+- Game state lives entirely on the server (`scripts/websocket.js`). Clients are dumb input/output terminals.
 - The display (`server.html`) only renders what it receives — no local simulation.
 - Player colors are assigned server-side in order: red, blue, green, orange.
 - Max 4 players (limited by color array).
@@ -107,7 +113,7 @@ All messages are JSON.
 
 - **When adding a new message type**, document it in the WebSocket Protocol table above.
 - **When adding a new file**, add it to the File Map.
-- **When changing an endpoint or URL**, update the Endpoints table and `start.sh`.
+- **When changing an endpoint or URL**, update the Endpoints table and `scripts/dev.js`.
 - **When changing the grid config**, update the Grid section (it is currently duplicated in `server.js` and `server.html` — keep them in sync or refactor to a shared config).
 - **When a major system is implemented** (stations, items, rhythm, etc.), add a section describing its state shape and protocol messages.
 - **Do not add features beyond what is scoped** unless explicitly asked — this is a 6h jam build.

@@ -4,58 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <title>Cacaotique — Controller</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #1a1a2e;
-      color: #fff;
-      font-family: monospace;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100svh;
-      gap: 24px;
-      touch-action: none;
-      user-select: none;
-    }
-    #info {
-      font-size: 18px;
-      letter-spacing: 1px;
-    }
-    #dot {
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      background: #555;
-      border: 3px solid #fff;
-      margin: 0 auto;
-    }
-    .dpad {
-      display: grid;
-      grid-template-columns: repeat(3, 72px);
-      grid-template-rows: repeat(3, 72px);
-      gap: 6px;
-    }
-    .btn {
-      background: #2a2a4a;
-      border: 2px solid #555;
-      border-radius: 12px;
-      color: #fff;
-      font-size: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .btn:active, .btn.pressed {
-      background: #4a4a8a;
-      border-color: #aaa;
-    }
-    .btn.empty { background: transparent; border: none; pointer-events: none; }
-    #status { font-size: 13px; color: #888; }
-  </style>
+  <link rel="stylesheet" href="/styles/index.css" />
 </head>
 <body>
   <div id="info">connecting…</div>

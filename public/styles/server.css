@@ -1,0 +1,4 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; overflow: hidden; }
+canvas { display: block; }
+#status { position: fixed; top: 8px; right: 12px; color: #aaa; font: 14px monospace; }
