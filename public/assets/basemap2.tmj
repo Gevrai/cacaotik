@@ -296,10 +296,19 @@
  "tiledversion":"1.11.2",
  "tileheight":16,
  "tilesets":[
-        {
-         "firstgid":1,
-         "source":"tilemap_packed.tsx"
-        }],
+    {
+      "columns": 12,
+      "firstgid": 1,
+      "image": "tilemap_packed.png",
+      "imageheight": 176,
+      "imagewidth": 192,
+      "margin": 0,
+      "name": "tilemap_packed",
+      "spacing": 0,
+      "tilecount": 132,
+      "tileheight": 16,
+      "tilewidth": 16
+    }],
  "tilewidth":16,
  "type":"map",
  "version":"1.10",
