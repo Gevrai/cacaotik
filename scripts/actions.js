@@ -11,6 +11,12 @@ const ACTION_LIBRARY = {
     targetName: 'Puits',
     durationMs: 3000,
   },
+  fetch_seed: {
+    key: 'fetch_seed',
+    title: 'Prendre une graine',
+    targetName: 'Maison',
+    durationMs: 3000,
+  },
   water_plants: {
     key: 'water_plants',
     title: 'Arroser',
@@ -70,12 +76,13 @@ function createActionManager(options = {}) {
   const stationByKey = {
     well: stations.well || { x: 15, y: 2 },
     hive: stations.hive || { x: 4, y: 18 },
+    house: stations.house || { x: 2, y: 2 },
   };
   const brownZone = stations.brownZone || BROWN_ZONE;
 
   const inProgressByPlayer = {};
   const completionTimeoutByPlayer = {};
-  const hasWaterByPlayer = {};
+  const inventoryByProfile = {};
   const beeFlights = [];
   const fireBursts = [];
   let playersSnapshot = {};
@@ -93,6 +100,24 @@ function createActionManager(options = {}) {
     }
   }
 
+  function profileKeyFromPlayer(player) {
+    return `${player.character}|${player.name}`;
+  }
+
+  function getInventoryForPlayerId(playerId, playersById = playersSnapshot) {
+    const player = playersById[playerId];
+    if (!player) return null;
+    const profileKey = profileKeyFromPlayer(player);
+    if (!inventoryByProfile[profileKey]) {
+      inventoryByProfile[profileKey] = {
+        hasWater: false,
+        seeds: 1,
+        cacao: 0,
+      };
+    }
+    return inventoryByProfile[profileKey];
+  }
+
   function cleanupTemporalEvents(now = Date.now()) {
     for (let index = beeFlights.length - 1; index >= 0; index -= 1) {
       const flight = beeFlights[index];
@@ -101,12 +126,6 @@ function createActionManager(options = {}) {
       }
     }
 
-    for (let index = fireBursts.length - 1; index >= 0; index -= 1) {
-      const burst = fireBursts[index];
-      if (now >= burst.startedAt + burst.durationMs) {
-        fireBursts.splice(index, 1);
-      }
-    }
   }
 
   function getPlantAt(x, y) {
@@ -122,6 +141,21 @@ function createActionManager(options = {}) {
     for (const plant of plants) {
       if (stageEquals !== null && plant.stage !== stageEquals) continue;
       if (stageAtMost !== null && plant.stage > stageAtMost) continue;
+      if (isAdjacent8(player, plant.gridX, plant.gridY) || (player.gridX === plant.gridX && player.gridY === plant.gridY)) {
+        return plant;
+      }
+    }
+    return null;
+  }
+
+  function isFireActiveAt(gridX, gridY) {
+    return fireBursts.some(burst => burst.targetGridX === gridX && burst.targetGridY === gridY);
+  }
+
+  function getNearestBurningPlantForPlayer(player) {
+    for (const plant of plants) {
+      if (plant.stage !== 4) continue;
+      if (!isFireActiveAt(plant.gridX, plant.gridY)) continue;
       if (isAdjacent8(player, plant.gridX, plant.gridY) || (player.gridX === plant.gridX && player.gridY === plant.gridY)) {
         return plant;
       }
@@ -150,7 +184,7 @@ function createActionManager(options = {}) {
     return {
       id: extras.id || null,
       key: def.key,
-      title: def.title,
+      title: extras.title || def.title,
       targetName: extras.targetName || def.targetName,
       gridX: extras.gridX ?? null,
       gridY: extras.gridY ?? null,
@@ -164,9 +198,10 @@ function createActionManager(options = {}) {
   }
 
   function getFetchWaterAction(playerId, player) {
+    const inventory = getInventoryForPlayerId(playerId);
     const well = stationByKey.well;
     const isNearWell = isAdjacent8(player, well.x, well.y);
-    const alreadyHasWater = Boolean(hasWaterByPlayer[playerId]);
+    const alreadyHasWater = Boolean(inventory && inventory.hasWater);
     const canInteract = isNearWell && !alreadyHasWater;
 
     return toAction(actionLibrary.fetch_water, {
@@ -181,9 +216,11 @@ function createActionManager(options = {}) {
   }
 
   function getPlantSeedAction(playerId, player) {
+    const inventory = getInventoryForPlayerId(playerId);
     const inBrownZone = isInZone(player, brownZone);
     const plantOnCell = getPlantAt(player.gridX, player.gridY);
-    const canInteract = inBrownZone && !plantOnCell;
+    const hasSeed = Boolean(inventory && inventory.seeds > 0);
+    const canInteract = inBrownZone && !plantOnCell && hasSeed;
 
     return toAction(actionLibrary.plant_seed, {
       actorId: playerId,
@@ -192,22 +229,42 @@ function createActionManager(options = {}) {
       canInteract,
       blockedReason: !inBrownZone
         ? 'Entre dans la zone marron.'
-        : (plantOnCell ? 'Il y a déjà une plante ici.' : null),
+        : (plantOnCell
+          ? 'Il y a déjà une plante ici.'
+          : (!hasSeed ? 'Tu n’as plus de graines.' : null)),
+    });
+  }
+
+  function getFetchSeedAction(playerId, player) {
+    const house = stationByKey.house;
+    const isNearHouse = isAdjacent8(player, house.x, house.y);
+
+    return toAction(actionLibrary.fetch_seed, {
+      actorId: playerId,
+      gridX: house.x,
+      gridY: house.y,
+      canInteract: isNearHouse,
+      blockedReason: isNearHouse ? null : 'Approche-toi de la maison.',
     });
   }
 
   function getWaterPlantsAction(playerId, player) {
-    const targetPlant = getNearestPlantForPlayer(player, { stageAtMost: 0 });
-    const hasWater = Boolean(hasWaterByPlayer[playerId]);
+    const inventory = getInventoryForPlayerId(playerId);
+    const burningPlant = getNearestBurningPlantForPlayer(player);
+    const targetPlant = burningPlant || getNearestPlantForPlayer(player, { stageAtMost: 0 });
+    const hasWater = Boolean(inventory && inventory.hasWater);
     const canInteract = Boolean(targetPlant) && hasWater;
+    const isExtinguish = Boolean(burningPlant);
 
     return toAction(actionLibrary.water_plants, {
       actorId: playerId,
       gridX: targetPlant ? targetPlant.gridX : null,
       gridY: targetPlant ? targetPlant.gridY : null,
+      title: isExtinguish ? 'Éteindre le feu' : actionLibrary.water_plants.title,
+      targetName: isExtinguish ? 'Arbre en feu' : actionLibrary.water_plants.targetName,
       canInteract,
       blockedReason: !targetPlant
-        ? 'Approche-toi d’une plante à arroser.'
+        ? 'Approche-toi d’une plante à arroser ou d’un arbre en feu.'
         : (!hasWater ? 'Tu dois d’abord prendre de l’eau au puits.' : null),
     });
   }
@@ -264,6 +321,7 @@ function createActionManager(options = {}) {
 
     return {
       plant_seed: getPlantSeedAction(playerId, player),
+      fetch_seed: getFetchSeedAction(playerId, player),
       fetch_water: getFetchWaterAction(playerId, player),
       water_plants: getWaterPlantsAction(playerId, player),
       talk_bees: getTalkBeesAction(playerId, player),
@@ -279,12 +337,17 @@ function createActionManager(options = {}) {
     const actionsByPlayer = {};
     const inProgressPublicByPlayer = {};
     const hasWaterPublicByPlayer = {};
+    const seedsPublicByPlayer = {};
+    const cacaoPublicByPlayer = {};
 
     const playerIds = Object.keys(playersById).map(Number);
 
     for (const playerId of playerIds) {
+      const inventory = getInventoryForPlayerId(playerId, playersById);
       actionsByPlayer[playerId] = getActionsForPlayer(playerId, playersById);
-      hasWaterPublicByPlayer[playerId] = Boolean(hasWaterByPlayer[playerId]);
+      hasWaterPublicByPlayer[playerId] = Boolean(inventory && inventory.hasWater);
+      seedsPublicByPlayer[playerId] = inventory ? inventory.seeds : 0;
+      cacaoPublicByPlayer[playerId] = inventory ? inventory.cacao : 0;
       if (inProgressByPlayer[playerId]) {
         inProgressPublicByPlayer[playerId] = inProgressByPlayer[playerId];
       }
@@ -294,6 +357,8 @@ function createActionManager(options = {}) {
       actionsByPlayer,
       inProgressByPlayer: inProgressPublicByPlayer,
       hasWaterByPlayer: hasWaterPublicByPlayer,
+      seedsByPlayer: seedsPublicByPlayer,
+      cacaoByPlayer: cacaoPublicByPlayer,
       plants: plants.map(plant => ({
         id: plant.id,
         gridX: plant.gridX,
@@ -310,7 +375,6 @@ function createActionManager(options = {}) {
       fireBursts: fireBursts.map(burst => ({
         id: burst.id,
         startedAt: burst.startedAt,
-        durationMs: burst.durationMs,
         targetGridX: burst.targetGridX,
         targetGridY: burst.targetGridY,
       })),
@@ -321,17 +385,31 @@ function createActionManager(options = {}) {
     onActionChange(getPublicActionState(playersById));
   }
 
+  function getBlockedPlantCellKeys() {
+    const blocked = new Set();
+    for (const plant of plants) {
+      blocked.add(`${plant.gridX},${plant.gridY}`);
+    }
+    return blocked;
+  }
+
   function finishAction(playerId, playersById, success, message, actionId) {
     const finishedAction = inProgressByPlayer[playerId] || null;
+    const inventory = getInventoryForPlayerId(playerId, playersById);
     clearCompletionTimer(playerId);
     delete inProgressByPlayer[playerId];
 
-    if (success && finishedAction) {
+    if (success && finishedAction && inventory) {
       if (finishedAction.key === 'fetch_water') {
-        hasWaterByPlayer[playerId] = true;
+        inventory.hasWater = true;
+      }
+
+      if (finishedAction.key === 'fetch_seed') {
+        inventory.seeds += 1;
       }
 
       if (finishedAction.key === 'plant_seed') {
+        inventory.seeds = Math.max(0, inventory.seeds - 1);
         if (!getPlantAt(finishedAction.gridX, finishedAction.gridY)) {
           plants.push({
             id: nextPlantId++,
@@ -344,8 +422,17 @@ function createActionManager(options = {}) {
 
       if (finishedAction.key === 'water_plants') {
         const plant = getPlantAt(finishedAction.gridX, finishedAction.gridY);
-        if (plant && plant.stage === 0) plant.stage = 1;
-        hasWaterByPlayer[playerId] = false;
+        if (plant && plant.stage === 0) {
+          plant.stage = 1;
+          inventory.hasWater = false;
+        }
+        if (plant && plant.stage === 4 && isFireActiveAt(plant.gridX, plant.gridY)) {
+          const burstIndex = fireBursts.findIndex(
+            burst => burst.targetGridX === plant.gridX && burst.targetGridY === plant.gridY,
+          );
+          if (burstIndex >= 0) fireBursts.splice(burstIndex, 1);
+          inventory.hasWater = false;
+        }
       }
 
       if (finishedAction.key === 'talk_bees') {
@@ -366,6 +453,7 @@ function createActionManager(options = {}) {
         const plant = getPlantAt(finishedAction.gridX, finishedAction.gridY);
         if (plant && plant.stage === 2) {
           plant.stage = 3;
+          inventory.cacao += 1;
         }
       }
 
@@ -373,13 +461,14 @@ function createActionManager(options = {}) {
         const plant = getPlantAt(finishedAction.gridX, finishedAction.gridY);
         if (plant && plant.stage === 3) {
           plant.stage = 4;
-          fireBursts.push({
-            id: nextFireBurstId++,
-            startedAt: Date.now(),
-            durationMs: 2800,
-            targetGridX: plant.gridX,
-            targetGridY: plant.gridY,
-          });
+          if (!isFireActiveAt(plant.gridX, plant.gridY)) {
+            fireBursts.push({
+              id: nextFireBurstId++,
+              startedAt: Date.now(),
+              targetGridX: plant.gridX,
+              targetGridY: plant.gridY,
+            });
+          }
         }
       }
     }
@@ -389,7 +478,9 @@ function createActionManager(options = {}) {
       success,
       message,
       playerId,
-      hasWater: Boolean(hasWaterByPlayer[playerId]),
+      hasWater: Boolean(inventory && inventory.hasWater),
+      seeds: inventory ? inventory.seeds : 0,
+      cacao: inventory ? inventory.cacao : 0,
     });
 
     emitActionChange(playersById);
@@ -404,15 +495,24 @@ function createActionManager(options = {}) {
       return isAdjacent8(player, well.x, well.y);
     }
 
+    if (action.key === 'fetch_seed') {
+      const house = stationByKey.house;
+      return isAdjacent8(player, house.x, house.y);
+    }
+
     if (action.key === 'plant_seed') {
       return isInZone(player, brownZone);
     }
 
     if (action.key === 'water_plants') {
+      const inventory = getInventoryForPlayerId(playerId, playersById);
       const plant = getPlantAt(action.gridX, action.gridY);
-      if (!plant || plant.stage !== 0) return false;
+        if (!plant) return false;
+        const isNormalWatering = plant.stage === 0;
+        const isFireExtinguish = plant.stage === 4 && isFireActiveAt(plant.gridX, plant.gridY);
+        if (!isNormalWatering && !isFireExtinguish) return false;
       return (
-        Boolean(hasWaterByPlayer[playerId])
+        Boolean(inventory && inventory.hasWater)
         && (isAdjacent8(player, plant.gridX, plant.gridY) || (player.gridX === plant.gridX && player.gridY === plant.gridY))
       );
     }
@@ -447,10 +547,8 @@ function createActionManager(options = {}) {
   function handleRosterChange(playersById) {
     playersSnapshot = playersById;
 
-    for (const playerId of Object.keys(hasWaterByPlayer)) {
-      if (!playersById[playerId]) {
-        delete hasWaterByPlayer[playerId];
-      }
+    for (const playerId of Object.keys(playersById)) {
+      getInventoryForPlayerId(playerId, playersById);
     }
 
     for (const playerId of Object.keys(inProgressByPlayer)) {
@@ -477,6 +575,7 @@ function createActionManager(options = {}) {
 
   function tryInteract(playerId, playersById, actionKey) {
     playersSnapshot = playersById;
+    const inventory = getInventoryForPlayerId(playerId, playersById);
 
     if (inProgressByPlayer[playerId]) {
       onActionResult({
@@ -484,7 +583,9 @@ function createActionManager(options = {}) {
         success: false,
         message: 'Action déjà en cours…',
         playerId,
-        hasWater: Boolean(hasWaterByPlayer[playerId]),
+        hasWater: Boolean(inventory && inventory.hasWater),
+        seeds: inventory ? inventory.seeds : 0,
+        cacao: inventory ? inventory.cacao : 0,
       });
       return;
     }
@@ -496,7 +597,9 @@ function createActionManager(options = {}) {
         success: false,
         message: 'Action inconnue.',
         playerId,
-        hasWater: Boolean(hasWaterByPlayer[playerId]),
+        hasWater: Boolean(inventory && inventory.hasWater),
+        seeds: inventory ? inventory.seeds : 0,
+        cacao: inventory ? inventory.cacao : 0,
       });
       return;
     }
@@ -508,7 +611,9 @@ function createActionManager(options = {}) {
         success: false,
         message: selectedAction.blockedReason || 'Action indisponible.',
         playerId,
-        hasWater: Boolean(hasWaterByPlayer[playerId]),
+        hasWater: Boolean(inventory && inventory.hasWater),
+        seeds: inventory ? inventory.seeds : 0,
+        cacao: inventory ? inventory.cacao : 0,
       });
       return;
     }
@@ -527,6 +632,7 @@ function createActionManager(options = {}) {
     completionTimeoutByPlayer[playerId] = setTimeout(() => {
       let successMessage = `Action réussie: ${actionToStart.title}.`;
       if (actionToStart.key === 'fetch_water') successMessage = 'Tu as de l’eau.';
+      if (actionToStart.key === 'fetch_seed') successMessage = 'Tu récupères une graine.';
       if (actionToStart.key === 'talk_bees') successMessage = 'Les abeilles vont butiner puis revenir à la ruche.';
       if (actionToStart.key === 'burn_tree') successMessage = 'Le feu prend sur l’arbre.';
 
@@ -542,6 +648,7 @@ function createActionManager(options = {}) {
 
   return {
     getPublicActionState,
+    getBlockedPlantCellKeys,
     handleRosterChange,
     tryInteract,
   };

@@ -15,6 +15,48 @@ const CHARACTER_COLORS = {
 
 const TICK_MS = 20; // server game loop interval (~20fps)
 
+function toCellKey(x, y) {
+  return `${x},${y}`;
+}
+
+function findNearestFreeCell(startX, startY, blockedCells, gridCols, gridRows) {
+  const startKey = toCellKey(startX, startY);
+  if (!blockedCells.has(startKey)) {
+    return { x: startX, y: startY };
+  }
+
+  const visited = new Set([startKey]);
+  const queue = [{ x: startX, y: startY }];
+  const directions = [
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 0, y: 1 },
+    { x: 0, y: -1 },
+  ];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+
+    for (const dir of directions) {
+      const nx = current.x + dir.x;
+      const ny = current.y + dir.y;
+      if (nx < 0 || ny < 0 || nx >= gridCols || ny >= gridRows) continue;
+
+      const key = toCellKey(nx, ny);
+      if (visited.has(key)) continue;
+      visited.add(key);
+
+      if (!blockedCells.has(key)) {
+        return { x: nx, y: ny };
+      }
+
+      queue.push({ x: nx, y: ny });
+    }
+  }
+
+  return null;
+}
+
 function setupWebSocket(server) {
   const wss = new WebSocketServer({ server });
   const players = {}; // id -> { id, name, character, color, x, y, vx, vy, gridX, gridY, ws }
@@ -49,6 +91,7 @@ function setupWebSocket(server) {
 
   const actionManager = createActionManager({
     stations: {
+      house: { x: 2, y: 2 },
       seed: { x: 7, y: 4 },
       well: { x: 15, y: 2 },
       plants: { x: 8, y: 4 },
@@ -96,13 +139,37 @@ function setupWebSocket(server) {
     const dt = now - lastTick;
     lastTick = now;
 
+    const dynamicPlantBlocked = actionManager.getBlockedPlantCellKeys();
+
     let anyMoving = false;
     for (const player of Object.values(players)) {
+      const hardBlocked = new Set(nav.blockedCells);
+      for (const cell of dynamicPlantBlocked) hardBlocked.add(cell);
+
+      const currentGridX = Math.floor(player.x / GRID_SIZE);
+      const currentGridY = Math.floor(player.y / GRID_SIZE);
+      if (hardBlocked.has(toCellKey(currentGridX, currentGridY))) {
+        const freeCell = findNearestFreeCell(currentGridX, currentGridY, hardBlocked, nav.gridCols, nav.gridRows);
+        if (freeCell) {
+          player.gridX = freeCell.x;
+          player.gridY = freeCell.y;
+          player.x = freeCell.x * GRID_SIZE + GRID_SIZE / 2;
+          player.y = freeCell.y * GRID_SIZE + GRID_SIZE / 2;
+        }
+      }
+
       if (player.vx !== 0 || player.vy !== 0) {
+        const mergedBlocked = new Set(nav.blockedCells);
+        for (const cell of dynamicPlantBlocked) {
+          if (cell !== `${player.gridX},${player.gridY}`) {
+            mergedBlocked.add(cell);
+          }
+        }
+
         tickPlayer(player, dt, {
           gridCols: nav.gridCols,
           gridRows: nav.gridRows,
-          blockedCells: nav.blockedCells,
+          blockedCells: mergedBlocked,
         });
         anyMoving = true;
       }

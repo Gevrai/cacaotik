@@ -69,6 +69,7 @@
         this.load.image('cacao_plant', '/assets/tiles/tile_0152_cacaotier0.png?t=' + mapCacheBust);
         this.load.image('cacao_plant_watered', '/assets/tiles/tile_0150_cacaotier1.png?t=' + mapCacheBust);
         this.load.image('cacao_plant_blossom', '/assets/tiles/tile_0151_cacaotier2.png?t=' + mapCacheBust);
+        this.load.image('cacao_plant_harvested', '/assets/tiles/tile_0158_cacaotier3.png?t=' + mapCacheBust);
 
         // Character spritesheets — 96×24px, 4 frames of 24×24
         const t = mapCacheBust;
@@ -673,23 +674,40 @@
 
           const gfx = this._fireBursts[burstId];
           const elapsed = Date.now() - burst.startedAt;
-          const ratio = Math.max(0, Math.min(1, elapsed / burst.durationMs));
+          const cycleMs = 1800;
+          const loopT = (elapsed % cycleMs) / cycleMs;
+          const drift = elapsed / 1000;
           const centerX = burst.targetGridX * DISPLAY_GRID + DISPLAY_GRID / 2;
           const centerY = burst.targetGridY * DISPLAY_GRID + DISPLAY_GRID / 2;
-          const radius = 4 + ratio * 8;
+          const flameHeight = 10;
+          const baseY = centerY + 4;
 
           gfx.clear();
-          gfx.fillStyle(0xff7a00, 0.55 * (1 - ratio));
-          for (let i = 0; i < 12; i++) {
-            const a = Math.random() * Math.PI * 2;
-            const r = Math.random() * radius;
-            gfx.fillCircle(centerX + Math.cos(a) * r, centerY - 1 + Math.sin(a) * r, 1.5);
+          gfx.fillStyle(0xff7a00, 0.5);
+          for (let i = 0; i < 18; i++) {
+            const p = (loopT + i / 18) % 1;
+            const yOffset = p * flameHeight;
+            const xJitter = Math.sin(drift * 2.2 + i * 0.55) * 2.2;
+            const alphaRadius = 1.8 - p * 0.9;
+            gfx.fillCircle(centerX + xJitter, baseY - yOffset, alphaRadius);
           }
-          gfx.fillStyle(0xffd147, 0.5 * (1 - ratio));
-          for (let i = 0; i < 8; i++) {
-            const a = Math.random() * Math.PI * 2;
-            const r = Math.random() * (radius * 0.6);
-            gfx.fillCircle(centerX + Math.cos(a) * r, centerY - 2 + Math.sin(a) * r, 1.2);
+
+          gfx.fillStyle(0xffd147, 0.45);
+          for (let i = 0; i < 10; i++) {
+            const p = (loopT + i / 10) % 1;
+            const yOffset = p * (flameHeight - 2);
+            const xJitter = Math.sin(drift * 2.8 + i * 0.8) * 1.5;
+            const alphaRadius = 1.2 - p * 0.6;
+            gfx.fillCircle(centerX + xJitter, baseY - yOffset - 1, alphaRadius);
+          }
+
+          gfx.fillStyle(0x333333, 0.25);
+          for (let i = 0; i < 6; i++) {
+            const p = (loopT + i / 6) % 1;
+            const yOffset = p * (flameHeight + 4);
+            const a = drift * 1.4 + i * 1.15;
+            const xJitter = Math.cos(a) * 1.6;
+            gfx.fillCircle(centerX + xJitter, baseY - yOffset - 5, 0.9);
           }
         }
 
@@ -706,17 +724,21 @@
           const plantY = plant.gridY * DISPLAY_GRID + DISPLAY_GRID / 2;
 
           if (!this._plantSprites[plantId]) {
-            const textureKey = plant.stage >= 2
-              ? 'cacao_plant_blossom'
-              : (plant.stage >= 1 ? 'cacao_plant_watered' : 'cacao_plant');
+            const textureKey = plant.stage >= 3
+              ? 'cacao_plant_harvested'
+              : (plant.stage >= 2
+                ? 'cacao_plant_blossom'
+                : (plant.stage >= 1 ? 'cacao_plant_watered' : 'cacao_plant'));
             const plantSprite = this.add.image(plantX, plantY, textureKey);
             plantSprite.setDisplaySize(DISPLAY_GRID, DISPLAY_GRID);
             this._plantSprites[plantId] = plantSprite;
           }
 
-          const textureKey = plant.stage >= 2
-            ? 'cacao_plant_blossom'
-            : (plant.stage >= 1 ? 'cacao_plant_watered' : 'cacao_plant');
+          const textureKey = plant.stage >= 3
+            ? 'cacao_plant_harvested'
+            : (plant.stage >= 2
+              ? 'cacao_plant_blossom'
+              : (plant.stage >= 1 ? 'cacao_plant_watered' : 'cacao_plant'));
           this._plantSprites[plantId].setTexture(textureKey);
           this._plantSprites[plantId].setPosition(plantX, plantY);
         }

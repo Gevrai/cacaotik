@@ -48,6 +48,7 @@
       </div>
       <div id="action-buttons">
         <button class="action-btn" data-action="plant_seed" type="button">Planter une graine</button>
+        <button class="action-btn" data-action="fetch_seed" type="button">Prendre une graine</button>
         <button class="action-btn" data-action="fetch_water" type="button">Prendre de l'eau</button>
         <button class="action-btn" data-action="water_plants" type="button">Arroser</button>
         <button class="action-btn" data-action="talk_bees" type="button">Parler aux abeilles</button>
@@ -56,6 +57,8 @@
       </div>
       <div id="player-position">Position: —</div>
       <div id="player-water">Eau: Non</div>
+      <div id="player-seeds">Graines: 0</div>
+      <div id="player-cacao">Cacao: 0</div>
     </div>
 
     <div id="joystick" aria-label="movement joystick">
@@ -75,6 +78,7 @@
     const btnEnterEl = document.getElementById('btn-enter');
 
     let selectedChar = null;
+    let gameStarted = false;
 
     const savedName = localStorage.getItem('cacao_name');
     const savedChar = localStorage.getItem('cacao_char');
@@ -97,13 +101,19 @@
     if (savedChar) selectChar(savedChar);
     nameInputEl.addEventListener('input', updateEnterBtn);
 
+    function launchGame(name, character) {
+      if (gameStarted) return;
+      gameStarted = true;
+      lobbyEl.style.display = 'none';
+      gameEl.style.display = 'flex';
+      startGame(name, character);
+    }
+
     btnEnterEl.addEventListener('click', () => {
       const name = nameInputEl.value.trim() || 'Joueur';
       localStorage.setItem('cacao_name', name);
       localStorage.setItem('cacao_char', selectedChar);
-      lobbyEl.style.display = 'none';
-      gameEl.style.display = 'flex';
-      startGame(name, selectedChar);
+      launchGame(name, selectedChar);
     });
 
     const infoEl = document.getElementById('info');
@@ -119,6 +129,8 @@
     const actionProgressFillEl = document.getElementById('action-progress-fill');
     const playerPositionEl = document.getElementById('player-position');
     const playerWaterEl = document.getElementById('player-water');
+    const playerSeedsEl = document.getElementById('player-seeds');
+    const playerCacaoEl = document.getElementById('player-cacao');
 
     let myId = null;
     let activeAction = null;
@@ -149,6 +161,7 @@
       if (!activeAction) {
         const blockedReason =
           getActionFromKey('plant_seed')?.blockedReason
+          || getActionFromKey('fetch_seed')?.blockedReason
           || getActionFromKey('fetch_water')?.blockedReason
           || getActionFromKey('water_plants')?.blockedReason
           || getActionFromKey('talk_bees')?.blockedReason
@@ -223,6 +236,18 @@
               playerWaterEl.textContent = `Eau: ${hasWater ? 'Oui' : 'Non'}`;
             }
           }
+          if (msg.seedsByPlayer) {
+            const seeds = msg.seedsByPlayer[myId] ?? msg.seedsByPlayer[String(myId)];
+            if (typeof seeds === 'number') {
+              playerSeedsEl.textContent = `Graines: ${seeds}`;
+            }
+          }
+          if (msg.cacaoByPlayer) {
+            const cacao = msg.cacaoByPlayer[myId] ?? msg.cacaoByPlayer[String(myId)];
+            if (typeof cacao === 'number') {
+              playerCacaoEl.textContent = `Cacao: ${cacao}`;
+            }
+          }
           updateMyActionFromSnapshot();
           renderAction();
         }
@@ -232,6 +257,12 @@
             statusEl.textContent = msg.message || 'action update';
             if (typeof msg.hasWater === 'boolean') {
               playerWaterEl.textContent = `Eau: ${msg.hasWater ? 'Oui' : 'Non'}`;
+            }
+            if (typeof msg.seeds === 'number') {
+              playerSeedsEl.textContent = `Graines: ${msg.seeds}`;
+            }
+            if (typeof msg.cacao === 'number') {
+              playerCacaoEl.textContent = `Cacao: ${msg.cacao}`;
             }
           }
         }
@@ -367,6 +398,10 @@
 
       resetJoystick();
       renderAction();
+    }
+
+    if (savedName && savedChar) {
+      launchGame(savedName, savedChar);
     }
   </script>
 </body>
