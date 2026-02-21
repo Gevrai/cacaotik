@@ -67,6 +67,12 @@ const ACTION_LIBRARY = {
     targetName: 'Caca chocolaté',
     durationMs: 3000,
   },
+  buy_happiness: {
+    key: 'buy_happiness',
+    title: 'Acheter le bonheur',
+    targetName: 'Maison',
+    durationMs: 3000,
+  },
   greet_player: {
     key: 'greet_player',
     title: 'Saluer',
@@ -486,6 +492,28 @@ function createActionManager(options = {}) {
     });
   }
 
+  function getBuyHappinessAction(playerId, player) {
+    const inventory = getInventoryForPlayerId(playerId);
+    const isAroundHouse = isAroundZone(player, houseZone);
+    const hasMoney = Boolean(inventory && inventory.money > 0);
+    const canAfford = Boolean(inventory && inventory.money >= 100000);
+    const centerX = Math.floor((houseZone.minX + houseZone.maxX) / 2);
+    const centerY = Math.floor((houseZone.minY + houseZone.maxY) / 2);
+
+    return toAction(actionLibrary.buy_happiness, {
+      actorId: playerId,
+      gridX: centerX,
+      gridY: centerY,
+      isVisible: isAroundHouse && hasMoney,
+      canInteract: isAroundHouse && canAfford,
+      blockedReason: !isAroundHouse
+        ? 'Place-toi autour de la maison.'
+        : (!hasMoney
+          ? 'Tu n’as pas encore d’argent.'
+          : (!canAfford ? 'Il faut 100000$ pour acheter le bonheur.' : null)),
+    });
+  }
+
   function getActionsForPlayer(playerId, playersById) {
     const player = playersById[playerId];
     if (!player) return null;
@@ -503,6 +531,7 @@ function createActionManager(options = {}) {
       pet_llama: getPetLlamaAction(playerId, player),
       feed_rabbit: getFeedRabbitAction(playerId, player),
       harvest_choco: getHarvestChocoAction(playerId, player),
+      buy_happiness: getBuyHappinessAction(playerId, player),
       greet_player: getGreetPlayerAction(playerId, player, playersById),
       activeAction,
     };
@@ -710,6 +739,12 @@ function createActionManager(options = {}) {
         }
       }
 
+      if (finishedAction.key === 'buy_happiness') {
+        if (inventory.money >= 100000) {
+          inventory.money -= 100000;
+        }
+      }
+
       if (finishedAction.key === 'fetch_water') {
         sfxPayload = {
           sfxFile: '/assets/sfx/water.mp3',
@@ -847,6 +882,11 @@ function createActionManager(options = {}) {
       ));
     }
 
+    if (action.key === 'buy_happiness') {
+      const inventory = getInventoryForPlayerId(playerId, playersById);
+      return isAroundZone(player, houseZone) && Boolean(inventory && inventory.money >= 100000);
+    }
+
     if (action.key === 'greet_player') {
       if (!action.targetPlayerId) return false;
       const target = playersById[action.targetPlayerId];
@@ -956,6 +996,7 @@ function createActionManager(options = {}) {
       if (actionToStart.key === 'pet_llama') successMessage = 'Le lama adore les papouilles.';
       if (actionToStart.key === 'feed_rabbit') successMessage = 'Le lapin a mangé 1 cacao.';
       if (actionToStart.key === 'harvest_choco') successMessage = '+500$ pour le caca en chocolat.';
+      if (actionToStart.key === 'buy_happiness') successMessage = 'Le bonheur est acheté (-100000$).';
       if (actionToStart.key === 'greet_player') successMessage = 'Salutations !';
 
       finishAction(
