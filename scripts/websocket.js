@@ -13,6 +13,9 @@ const CHARACTER_COLORS = {
   yellow: '#f1c40f',
 };
 
+const LLAMA_STATIONS = [{ x: 23, y: 15 }, { x: 23, y: 16 }];
+const RABBIT_STATIONS = [{ x: 20, y: 14 }, { x: 21, y: 15 }, { x: 22, y: 14 }];
+
 const TICK_MS = 20; // server game loop interval (~20fps)
 
 function toCellKey(x, y) {
@@ -93,10 +96,12 @@ function setupWebSocket(server) {
     stations: {
       house: { x: 2, y: 2 },
       seed: { x: 7, y: 4 },
+      houseZone: { minX: 3, maxX: 5, minY: 1, maxY: 3 },
       well: { x: 15, y: 2 },
       plants: { x: 8, y: 4 },
       harvest: { x: 9, y: 4 },
-      llamas: [{ x: 23, y: 15 }, { x: 23, y: 16 }],
+      llamas: LLAMA_STATIONS,
+      rabbits: RABBIT_STATIONS,
     },
     onActionChange: (actionState) => {
       broadcast({
@@ -142,12 +147,14 @@ function setupWebSocket(server) {
 
     const dynamicPlantBlocked = actionManager.getBlockedPlantCellKeys();
     const dynamicLlamaBlocked = actionManager.getBlockedLlamaCellKeys();
+    const dynamicHouseBlocked = actionManager.getBlockedHouseCellKeys();
 
     let anyMoving = false;
     for (const player of Object.values(players)) {
       const hardBlocked = new Set(nav.blockedCells);
       for (const cell of dynamicPlantBlocked) hardBlocked.add(cell);
       for (const cell of dynamicLlamaBlocked) hardBlocked.add(cell);
+      for (const cell of dynamicHouseBlocked) hardBlocked.add(cell);
 
       const currentGridX = Math.floor(player.x / GRID_SIZE);
       const currentGridY = Math.floor(player.y / GRID_SIZE);
@@ -169,6 +176,9 @@ function setupWebSocket(server) {
           }
         }
         for (const cell of dynamicLlamaBlocked) {
+          mergedBlocked.add(cell);
+        }
+        for (const cell of dynamicHouseBlocked) {
           mergedBlocked.add(cell);
         }
 

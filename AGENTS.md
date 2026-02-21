@@ -99,7 +99,7 @@ All messages are JSON.
 | `join` | `name: string, character: "red"\|"blue"\|"white"\|"yellow"` | First message after connect; registers the player with name + preferred character |
 | `move` | `dir: "up"\|"down"\|"left"\|"right"\|"up-left"\|"up-right"\|"down-left"\|"down-right"` | Set player velocity in given direction (sent once on direction change) |
 | `stop` | _(none)_ | Zero player velocity (sent on joystick release) |
-| `interact` | `key: "plant_seed"\|"fetch_seed"\|"fetch_water"\|"water_plants"\|"talk_bees"\|"harvest_cacao"\|"burn_tree"\|"pet_llama"` | Attempt the selected action button |
+| `interact` | `key: "plant_seed"\|"fetch_seed"\|"fetch_water"\|"water_plants"\|"talk_bees"\|"harvest_cacao"\|"burn_tree"\|"pet_llama"\|"feed_rabbit"` | Attempt the selected action button |
 
 ### Server → Client (broadcast to all)
 
@@ -107,7 +107,7 @@ All messages are JSON.
 |--------|--------|-------------|
 | `init` | `id, name, character, color, x, y, gridX, gridY, gridSize, gridCols, gridRows` | Sent once after `join` to the joining client with assigned character/color |
 | `state` | `players: [{id, name, character, color, x, y, gridX, gridY}]` | Full player state, broadcast by game loop (~20fps) while any player is moving |
-| `action_update` | `actionsByPlayer: { [playerId]: { plant_seed, fetch_seed, fetch_water, water_plants, talk_bees, harvest_cacao, burn_tree, pet_llama, activeAction } }, inProgressByPlayer: { [playerId]: action }, hasWaterByPlayer: { [playerId]: boolean }, seedsByPlayer: { [playerId]: number }, cacaoByPlayer: { [playerId]: number }, plants: [{id,gridX,gridY,stage}], beeFlights: [{id,targetGridX,targetGridY,startedAt,durationMs}], fireBursts: [{id,targetGridX,targetGridY,startedAt,durationMs}], serverTime` | Per-player action buttons state + active progress + world farming state. Each action entry includes `canInteract`, `isVisible`, and `blockedReason`. |
+| `action_update` | `actionsByPlayer: { [playerId]: { plant_seed, fetch_seed, fetch_water, water_plants, talk_bees, harvest_cacao, burn_tree, pet_llama, feed_rabbit, activeAction } }, inProgressByPlayer: { [playerId]: action }, hasWaterByPlayer: { [playerId]: boolean }, seedsByPlayer: { [playerId]: number }, cacaoByPlayer: { [playerId]: number }, plants: [{id,gridX,gridY,stage}], beeFlights: [{id,targetGridX,targetGridY,startedAt,durationMs}], fireBursts: [{id,targetGridX,targetGridY,startedAt,durationMs}], rabbitCacaoTiles: [{id,targetGridX,targetGridY}], serverTime` | Per-player action buttons state + active progress + world farming state. Each action entry includes `canInteract`, `isVisible`, and `blockedReason`. |
 | `action_result` | `actionId, success, message, playerId, hasWater, seeds, cacao` | Result/feedback after interact attempts or completion (includes concerned player inventory) |
 | `reload_map` | `file: string` | Sent when a .tmj file changes; display restarts its Phaser scene |
 
@@ -136,7 +136,7 @@ All messages are JSON.
 
 - Mobile shows 7 explicit buttons (`plant_seed`, `fetch_seed`, `fetch_water`, `water_plants`, `talk_bees`, `harvest_cacao`, `burn_tree`) that are disabled when conditions are not met.
 - Each player starts with `1` seed.
-- `fetch_seed` near the house adds one seed to the player inventory.
+- `fetch_seed` around the house (`x:3..5`, `y:1..3` blocked footprint) converts `1` cacao into `3` seeds.
 - Brown zone (`x:2..10`, `y:8..14`) enables planting; planting creates a plant at player position.
 - Planting consumes one seed.
 - Watering requires both proximity to a stage-0 plant and player water state.
@@ -144,6 +144,9 @@ All messages are JSON.
 - Harvesting cacao requires proximity to a stage-2 plant and turns it into stage-3.
 - Harvesting increments per-player cacao inventory.
 - Burning requires proximity to a stage-3 plant and triggers fire particles.
+- Extinguishing a burning tree removes it from the tile.
+- Llama interactions use fixed cells (`23,15` and `23,16`).
+- Rabbit interactions use fixed cells (`20,14`, `21,15`, `22,14`).
 - `interact` starts a 3s progress for that player; moving out of valid range cancels progress.
 - Active action progress is rendered above the corresponding player on display.
 

@@ -13,7 +13,7 @@ const ACTION_LIBRARY = {
   },
   fetch_seed: {
     key: 'fetch_seed',
-    title: 'Prendre une graine',
+    title: 'Transformer cacao en graines',
     targetName: 'Maison',
     durationMs: 3000,
   },
@@ -47,6 +47,12 @@ const ACTION_LIBRARY = {
     targetName: 'Lama',
     durationMs: 3000,
   },
+  feed_rabbit: {
+    key: 'feed_rabbit',
+    title: 'Nourrir le lapin',
+    targetName: 'Lapin',
+    durationMs: 3000,
+  },
 };
 
 const BROWN_ZONE = {
@@ -54,6 +60,13 @@ const BROWN_ZONE = {
   maxX: 10,
   minY: 8,
   maxY: 14,
+};
+
+const HOUSE_ZONE = {
+  minX: 3,
+  maxX: 5,
+  minY: 1,
+  maxY: 3,
 };
 
 function isAdjacent8(player, x, y) {
@@ -71,6 +84,16 @@ function isInZone(player, zone) {
   );
 }
 
+function isAroundZone(player, zone) {
+  const inExpanded = (
+    player.gridX >= zone.minX - 1
+    && player.gridX <= zone.maxX + 1
+    && player.gridY >= zone.minY - 1
+    && player.gridY <= zone.maxY + 1
+  );
+  return inExpanded && !isInZone(player, zone);
+}
+
 function createActionManager(options = {}) {
   const {
     actionLibrary = ACTION_LIBRARY,
@@ -86,20 +109,26 @@ function createActionManager(options = {}) {
     llamas: Array.isArray(stations.llamas) && stations.llamas.length > 0
       ? stations.llamas
       : [{ x: 23, y: 15 }, { x: 23, y: 16 }],
+    rabbits: Array.isArray(stations.rabbits) && stations.rabbits.length > 0
+      ? stations.rabbits
+      : [{ x: 20, y: 14 }, { x: 21, y: 15 }, { x: 22, y: 14 }],
   };
   const brownZone = stations.brownZone || BROWN_ZONE;
+  const houseZone = stations.houseZone || HOUSE_ZONE;
 
   const inProgressByPlayer = {};
   const completionTimeoutByPlayer = {};
   const inventoryByProfile = {};
   const beeFlights = [];
   const fireBursts = [];
+  const rabbitCacaoTiles = [];
   let playersSnapshot = {};
 
   let nextActionId = 1;
   let nextPlantId = 1;
   let nextBeeFlightId = 1;
   let nextFireBurstId = 1;
+  let nextRabbitCacaoTileId = 1;
   const plants = [];
 
   function clearCompletionTimer(playerId) {
@@ -198,6 +227,15 @@ function createActionManager(options = {}) {
     return null;
   }
 
+  function getNearestRabbitForPlayer(player) {
+    for (const rabbit of stationByKey.rabbits) {
+      if (isAdjacent8(player, rabbit.x, rabbit.y) || (player.gridX === rabbit.x && player.gridY === rabbit.y)) {
+        return rabbit;
+      }
+    }
+    return null;
+  }
+
   function toAction(def, extras = {}) {
     return {
       id: extras.id || null,
@@ -257,16 +295,21 @@ function createActionManager(options = {}) {
   }
 
   function getFetchSeedAction(playerId, player) {
-    const house = stationByKey.house;
-    const isNearHouse = isAdjacent8(player, house.x, house.y);
+    const inventory = getInventoryForPlayerId(playerId);
+    const isAroundHouse = isAroundZone(player, houseZone);
+    const hasCacao = Boolean(inventory && inventory.cacao > 0);
+    const centerX = Math.floor((houseZone.minX + houseZone.maxX) / 2);
+    const centerY = Math.floor((houseZone.minY + houseZone.maxY) / 2);
 
     return toAction(actionLibrary.fetch_seed, {
       actorId: playerId,
-      gridX: house.x,
-      gridY: house.y,
-      isVisible: isNearHouse,
-      canInteract: isNearHouse,
-      blockedReason: isNearHouse ? null : 'Approche-toi de la maison.',
+      gridX: centerX,
+      gridY: centerY,
+      isVisible: isAroundHouse,
+      canInteract: isAroundHouse && hasCacao,
+      blockedReason: !isAroundHouse
+        ? 'Place-toi autour de la maison.'
+        : (!hasCacao ? 'Il faut 1 cacao pour obtenir 3 graines.' : null),
     });
   }
 
@@ -353,6 +396,23 @@ function createActionManager(options = {}) {
     });
   }
 
+  function getFeedRabbitAction(playerId, player) {
+    const inventory = getInventoryForPlayerId(playerId);
+    const rabbit = getNearestRabbitForPlayer(player);
+    const hasCacao = Boolean(inventory && inventory.cacao > 0);
+
+    return toAction(actionLibrary.feed_rabbit, {
+      actorId: playerId,
+      gridX: rabbit ? rabbit.x : null,
+      gridY: rabbit ? rabbit.y : null,
+      isVisible: Boolean(rabbit),
+      canInteract: Boolean(rabbit) && hasCacao,
+      blockedReason: !rabbit
+        ? 'Approche-toi d’un lapin.'
+        : (!hasCacao ? 'Il faut 1 cacao pour nourrir le lapin.' : null),
+    });
+  }
+
   function getActionsForPlayer(playerId, playersById) {
     const player = playersById[playerId];
     if (!player) return null;
@@ -368,6 +428,7 @@ function createActionManager(options = {}) {
       harvest_cacao: getHarvestCacaoAction(playerId, player),
       burn_tree: getBurnTreeAction(playerId, player),
       pet_llama: getPetLlamaAction(playerId, player),
+      feed_rabbit: getFeedRabbitAction(playerId, player),
       activeAction,
     };
   }
@@ -419,6 +480,11 @@ function createActionManager(options = {}) {
         targetGridX: burst.targetGridX,
         targetGridY: burst.targetGridY,
       })),
+      rabbitCacaoTiles: rabbitCacaoTiles.map(tile => ({
+        id: tile.id,
+        targetGridX: tile.targetGridX,
+        targetGridY: tile.targetGridY,
+      })),
     };
   }
 
@@ -442,6 +508,16 @@ function createActionManager(options = {}) {
     return blocked;
   }
 
+  function getBlockedHouseCellKeys() {
+    const blocked = new Set();
+    for (let y = houseZone.minY; y <= houseZone.maxY; y += 1) {
+      for (let x = houseZone.minX; x <= houseZone.maxX; x += 1) {
+        blocked.add(`${x},${y}`);
+      }
+    }
+    return blocked;
+  }
+
   function finishAction(playerId, playersById, success, message, actionId) {
     const finishedAction = inProgressByPlayer[playerId] || null;
     const inventory = getInventoryForPlayerId(playerId, playersById);
@@ -454,7 +530,10 @@ function createActionManager(options = {}) {
       }
 
       if (finishedAction.key === 'fetch_seed') {
-        inventory.seeds += 1;
+        if (inventory.cacao > 0) {
+          inventory.cacao -= 1;
+          inventory.seeds += 3;
+        }
       }
 
       if (finishedAction.key === 'plant_seed') {
@@ -480,6 +559,10 @@ function createActionManager(options = {}) {
             burst => burst.targetGridX === plant.gridX && burst.targetGridY === plant.gridY,
           );
           if (burstIndex >= 0) fireBursts.splice(burstIndex, 1);
+          const plantIndex = plants.findIndex(
+            candidate => candidate.id === plant.id,
+          );
+          if (plantIndex >= 0) plants.splice(plantIndex, 1);
           inventory.hasWater = false;
         }
       }
@@ -520,6 +603,22 @@ function createActionManager(options = {}) {
           }
         }
       }
+
+      if (finishedAction.key === 'feed_rabbit') {
+        if (inventory.cacao > 0) {
+          inventory.cacao -= 1;
+          const alreadyPlaced = rabbitCacaoTiles.some(
+            tile => tile.targetGridX === finishedAction.gridX && tile.targetGridY === finishedAction.gridY,
+          );
+          if (!alreadyPlaced) {
+            rabbitCacaoTiles.push({
+              id: nextRabbitCacaoTileId++,
+              targetGridX: finishedAction.gridX,
+              targetGridY: finishedAction.gridY,
+            });
+          }
+        }
+      }
     }
 
     onActionResult({
@@ -546,8 +645,8 @@ function createActionManager(options = {}) {
     }
 
     if (action.key === 'fetch_seed') {
-      const house = stationByKey.house;
-      return isAdjacent8(player, house.x, house.y);
+      const inventory = getInventoryForPlayerId(playerId, playersById);
+      return isAroundZone(player, houseZone) && Boolean(inventory && inventory.cacao > 0);
     }
 
     if (action.key === 'plant_seed') {
@@ -597,6 +696,15 @@ function createActionManager(options = {}) {
         && llama.y === action.gridY
         && (isAdjacent8(player, llama.x, llama.y) || (player.gridX === llama.x && player.gridY === llama.y))
       ));
+    }
+
+    if (action.key === 'feed_rabbit') {
+      const inventory = getInventoryForPlayerId(playerId, playersById);
+      return stationByKey.rabbits.some(rabbit => (
+        rabbit.x === action.gridX
+        && rabbit.y === action.gridY
+        && (isAdjacent8(player, rabbit.x, rabbit.y) || (player.gridX === rabbit.x && player.gridY === rabbit.y))
+      )) && Boolean(inventory && inventory.cacao > 0);
     }
 
     return true;
@@ -690,10 +798,11 @@ function createActionManager(options = {}) {
     completionTimeoutByPlayer[playerId] = setTimeout(() => {
       let successMessage = `Action réussie: ${actionToStart.title}.`;
       if (actionToStart.key === 'fetch_water') successMessage = 'Tu as de l’eau.';
-      if (actionToStart.key === 'fetch_seed') successMessage = 'Tu récupères une graine.';
+      if (actionToStart.key === 'fetch_seed') successMessage = '1 cacao transformé en 3 graines.';
       if (actionToStart.key === 'talk_bees') successMessage = 'Les abeilles vont butiner puis revenir à la ruche.';
       if (actionToStart.key === 'burn_tree') successMessage = 'Le feu prend sur l’arbre.';
       if (actionToStart.key === 'pet_llama') successMessage = 'Le lama adore les caresses.';
+      if (actionToStart.key === 'feed_rabbit') successMessage = 'Le lapin a mangé 1 cacao.';
 
       finishAction(
         playerId,
@@ -709,6 +818,7 @@ function createActionManager(options = {}) {
     getPublicActionState,
     getBlockedPlantCellKeys,
     getBlockedLlamaCellKeys,
+    getBlockedHouseCellKeys,
     handleRosterChange,
     tryInteract,
   };
