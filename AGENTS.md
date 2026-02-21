@@ -99,7 +99,7 @@ All messages are JSON.
 | `join` | `name: string, character: "red"\|"blue"\|"white"\|"yellow"` | First message after connect; registers the player with name + preferred character |
 | `move` | `dir: "up"\|"down"\|"left"\|"right"\|"up-left"\|"up-right"\|"down-left"\|"down-right"` | Set player velocity in given direction (sent once on direction change) |
 | `stop` | _(none)_ | Zero player velocity (sent on joystick release) |
-| `interact` | _(none)_ | Attempt interaction for the player action available at current position |
+| `interact` | `key: "plant_seed"\|"fetch_water"\|"water_plants"` | Attempt the selected action button |
 
 ### Server → Client (broadcast to all)
 
@@ -107,7 +107,7 @@ All messages are JSON.
 |--------|--------|-------------|
 | `init` | `id, name, character, color, x, y, gridX, gridY, gridSize, gridCols, gridRows` | Sent once after `join` to the joining client with assigned character/color |
 | `state` | `players: [{id, name, character, color, x, y, gridX, gridY}]` | Full player state, broadcast by game loop (~20fps) while any player is moving |
-| `action_update` | `actionsByPlayer: { [playerId]: {id,key,title,description,targetName,gridX,gridY,durationMs,status,actorId,startedAt}\|null }, inProgressByPlayer: { [playerId]: action }, serverTime` | Contextual action state for each player + active progress actions |
+| `action_update` | `actionsByPlayer: { [playerId]: { plant_seed, fetch_water, water_plants, activeAction } }, inProgressByPlayer: { [playerId]: action }, hasWaterByPlayer: { [playerId]: boolean }, plants: [{id,gridX,gridY,watered}], serverTime` | Per-player action buttons state + active progress + world farming state |
 | `action_result` | `actionId, success, message, playerId` | Result/feedback after interact attempts or completion (includes concerned player) |
 | `reload_map` | `file: string` | Sent when a .tmj file changes; display restarts its Phaser scene |
 
@@ -134,14 +134,11 @@ All messages are JSON.
 
 ## Action Flow (Current)
 
-- Actions are contextual (no prerequisites):
-    1) `plant_seed`
-    2) `fetch_water`
-    3) `water_plants`
-    4) `harvest_plant`
-- A player sees an action on mobile only when adjacent to its station.
-- `interact` starts a 3s progress for that player.
-- Active action progress is broadcast and rendered above the corresponding player on display.
+- Mobile shows 3 explicit buttons (`plant_seed`, `fetch_water`, `water_plants`) that are disabled when conditions are not met.
+- Brown zone (`x:2..10`, `y:8..14`) enables planting; planting creates a plant at player position.
+- Watering requires both proximity to a planted tile and player water state.
+- `interact` starts a 3s progress for that player; moving out of valid range cancels progress.
+- Active action progress is rendered above the corresponding player on display.
 
 ---
 

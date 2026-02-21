@@ -195,7 +195,7 @@ function setupWebSocket(server) {
       }
 
       if (msg.type === 'interact') {
-        actionManager.tryInteract(id, players);
+        actionManager.tryInteract(id, players, msg.key);
       }
     });
 

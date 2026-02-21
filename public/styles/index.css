@@ -154,15 +154,28 @@ body {
   color: #aaa;
 }
 
-#action-title {
-  font-size: 20px;
-  font-weight: 700;
-}
-
-#action-target,
 #action-timer {
   font-size: 14px;
   color: #ddd;
+}
+
+#action-buttons {
+  display: grid;
+  gap: 8px;
+}
+
+.action-btn {
+  background: #4a4a8a;
+  border: 2px solid #aaa;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 18px;
+  font-family: monospace;
+  padding: 10px;
+}
+
+.action-btn:disabled {
+  opacity: 0.45;
 }
 
 #action-progress {
@@ -190,17 +203,10 @@ body {
   font-size: 14px;
   color: #fff;
 }
-#btn-interact {
-  background: #4a4a8a;
-  border: 2px solid #aaa;
-  border-radius: 10px;
+
+#player-water {
+  font-size: 14px;
   color: #fff;
-  font-size: 20px;
-  font-family: monospace;
-  padding: 12px;
-}
-#btn-interact:disabled {
-  opacity: 0.45;
 }
 
 #joystick {

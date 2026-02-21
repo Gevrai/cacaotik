@@ -42,14 +42,17 @@
 
     <div id="action-card">
       <div id="action-role">En attente d'action…</div>
-      <div id="action-title">—</div>
-      <div id="action-target">—</div>
       <div id="action-timer">—</div>
       <div id="action-progress" aria-hidden="true">
         <div id="action-progress-fill"></div>
       </div>
+      <div id="action-buttons">
+        <button class="action-btn" data-action="plant_seed" type="button">Planter une graine</button>
+        <button class="action-btn" data-action="fetch_water" type="button">Prendre de l'eau</button>
+        <button class="action-btn" data-action="water_plants" type="button">Arroser</button>
+      </div>
       <div id="player-position">Position: —</div>
-      <button id="btn-interact" type="button">Interagir</button>
+      <div id="player-water">Eau: Non</div>
     </div>
 
     <div id="joystick" aria-label="movement joystick">
@@ -107,57 +110,66 @@
     const joystickBaseEl = document.getElementById('joystick-base');
     const joystickStickEl = document.getElementById('joystick-stick');
     const actionRoleEl = document.getElementById('action-role');
-    const actionTitleEl = document.getElementById('action-title');
-    const actionTargetEl = document.getElementById('action-target');
+    const actionBtnEls = document.querySelectorAll('.action-btn');
     const actionTimerEl = document.getElementById('action-timer');
     const actionProgressEl = document.getElementById('action-progress');
     const actionProgressFillEl = document.getElementById('action-progress-fill');
     const playerPositionEl = document.getElementById('player-position');
-    const interactBtnEl = document.getElementById('btn-interact');
+    const playerWaterEl = document.getElementById('player-water');
 
     let myId = null;
-    let currentAction = null;
-    let actionsByPlayer = {};
+    let activeAction = null;
+    let actionsByKey = {};
 
     function updateMyActionFromSnapshot() {
       if (!myId) return;
-      currentAction = actionsByPlayer[myId] || null;
+      const myActions = actionsByKey;
+      activeAction = myActions.activeAction || null;
+    }
+
+    function getActionFromKey(actionKey) {
+      return actionsByKey[actionKey] || null;
+    }
+
+    function renderActionButtons() {
+      for (const button of actionBtnEls) {
+        const actionKey = button.dataset.action;
+        const action = getActionFromKey(actionKey);
+        const canUse = Boolean(action && action.canInteract && !activeAction);
+        button.disabled = !canUse;
+      }
     }
 
     function renderAction() {
-      if (!currentAction) {
-        actionRoleEl.textContent = 'Aucune action ici';
-        actionTitleEl.textContent = '—';
-        actionTargetEl.textContent = '—';
+      renderActionButtons();
+
+      if (!activeAction) {
+        const blockedReason =
+          getActionFromKey('plant_seed')?.blockedReason
+          || getActionFromKey('fetch_water')?.blockedReason
+          || getActionFromKey('water_plants')?.blockedReason;
+        actionRoleEl.textContent = blockedReason || 'Choisis une action';
         actionTimerEl.textContent = '—';
         actionProgressEl.classList.remove('visible');
         actionProgressFillEl.style.width = '0%';
-        interactBtnEl.disabled = true;
         return;
       }
 
-      actionRoleEl.textContent = currentAction.status === 'in_progress'
-        ? 'Action en cours…'
-        : 'Action disponible';
+      actionRoleEl.textContent = `Action en cours: ${activeAction.title}`;
 
-      actionTitleEl.textContent = currentAction.title;
-      actionTargetEl.textContent = `Lieu: ${currentAction.targetName} (${currentAction.gridX}, ${currentAction.gridY})`;
-
-      if (currentAction.status === 'in_progress' && currentAction.startedAt) {
-        const elapsed = Date.now() - currentAction.startedAt;
-        const remainingMs = Math.max(0, currentAction.durationMs - elapsed);
+      if (activeAction.status === 'in_progress' && activeAction.startedAt) {
+        const elapsed = Date.now() - activeAction.startedAt;
+        const remainingMs = Math.max(0, activeAction.durationMs - elapsed);
         actionTimerEl.textContent = `Timer: ${(remainingMs / 1000).toFixed(1)}s`;
 
-        const progress = Math.max(0, Math.min(1, elapsed / currentAction.durationMs));
+        const progress = Math.max(0, Math.min(1, elapsed / activeAction.durationMs));
         actionProgressEl.classList.add('visible');
         actionProgressFillEl.style.width = `${(progress * 100).toFixed(1)}%`;
       } else {
-        actionTimerEl.textContent = `Timer: ${(currentAction.durationMs / 1000).toFixed(1)}s`;
+        actionTimerEl.textContent = '—';
         actionProgressEl.classList.remove('visible');
         actionProgressFillEl.style.width = '0%';
       }
-
-      interactBtnEl.disabled = currentAction.status !== 'pending';
     }
 
     function startGame(name, character) {
@@ -195,7 +207,16 @@
 
 
         if (msg.type === 'action_update') {
-          actionsByPlayer = msg.actionsByPlayer || {};
+          const myActions = (msg.actionsByPlayer && myId)
+            ? (msg.actionsByPlayer[myId] || msg.actionsByPlayer[String(myId)] || {})
+            : {};
+          actionsByKey = myActions;
+          if (msg.hasWaterByPlayer) {
+            const hasWater = msg.hasWaterByPlayer[myId] ?? msg.hasWaterByPlayer[String(myId)];
+            if (typeof hasWater === 'boolean') {
+              playerWaterEl.textContent = `Eau: ${hasWater ? 'Oui' : 'Non'}`;
+            }
+          }
           updateMyActionFromSnapshot();
           renderAction();
         }
@@ -203,6 +224,9 @@
         if (msg.type === 'action_result') {
           if (!msg.playerId || msg.playerId === myId) {
             statusEl.textContent = msg.message || 'action update';
+            if (typeof msg.hasWater === 'boolean') {
+              playerWaterEl.textContent = `Eau: ${msg.hasWater ? 'Oui' : 'Non'}`;
+            }
           }
         }
       };
@@ -217,9 +241,9 @@
         ws.send(JSON.stringify({ type: 'stop' }));
       }
 
-      function sendInteract() {
+      function sendInteract(actionKey) {
         if (ws.readyState !== 1) return;
-        ws.send(JSON.stringify({ type: 'interact' }));
+        ws.send(JSON.stringify({ type: 'interact', key: actionKey }));
       }
 
       const DEAD_ZONE = 18;
@@ -322,10 +346,15 @@
         resetJoystick();
       });
 
-      interactBtnEl.addEventListener('click', sendInteract);
+      actionBtnEls.forEach(button => {
+        button.addEventListener('click', () => {
+          const actionKey = button.dataset.action;
+          sendInteract(actionKey);
+        });
+      });
 
       setInterval(() => {
-        if (currentAction && currentAction.status === 'in_progress') {
+        if (activeAction && activeAction.status === 'in_progress') {
           renderAction();
         }
       }, 100);

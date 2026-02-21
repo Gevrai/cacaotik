@@ -42,6 +42,7 @@
   <script>
     // ── Shared state (updated by WebSocket, read by Phaser scene) ──────────
     let players = {};
+    let plants = [];
     let inProgressByPlayer = {};
     let mapCacheBust = Date.now();
     const statusEl = document.getElementById('status');
@@ -61,6 +62,8 @@
 
         this.load.tilemapTiledJSON('map', this._mapUrl);
         this.load.image('tilemap_packed', '/assets/tilemap_packed.png?t=' + mapCacheBust);
+        this.load.image('cacao_plant', '/assets/tiles/tile_0152_cacaotier0.png?t=' + mapCacheBust);
+        this.load.image('cacao_plant_watered', '/assets/tiles/tile_0150_cacaotier1.png?t=' + mapCacheBust);
 
         // Character spritesheets — 96×24px, 4 frames of 24×24
         const t = mapCacheBust;
@@ -279,6 +282,7 @@
         this._labels = {};   // id → Phaser.GameObjects.Text
         this._local = {};    // id → { x, y } — client-extrapolated pixel positions (display scale)
         this._progressBars = {}; // id -> { bg, fill }
+        this._plantSprites = {}; // id -> Phaser.GameObjects.Image
       }
 
       update(time, delta) {
@@ -343,6 +347,31 @@
         const CORRECTION = 0.2; // per-frame lerp strength toward server truth
 
         const activeIds = new Set(Object.keys(players));
+        const activePlantIds = new Set(plants.map(plant => String(plant.id)));
+
+        for (const plant of plants) {
+          const plantId = String(plant.id);
+          const plantX = plant.gridX * DISPLAY_GRID + DISPLAY_GRID / 2;
+          const plantY = plant.gridY * DISPLAY_GRID + DISPLAY_GRID / 2;
+
+          if (!this._plantSprites[plantId]) {
+            const textureKey = plant.watered ? 'cacao_plant_watered' : 'cacao_plant';
+            const plantSprite = this.add.image(plantX, plantY, textureKey);
+            plantSprite.setDisplaySize(DISPLAY_GRID, DISPLAY_GRID);
+            this._plantSprites[plantId] = plantSprite;
+          }
+
+          const textureKey = plant.watered ? 'cacao_plant_watered' : 'cacao_plant';
+          this._plantSprites[plantId].setTexture(textureKey);
+          this._plantSprites[plantId].setPosition(plantX, plantY);
+        }
+
+        for (const plantId of Object.keys(this._plantSprites)) {
+          if (!activePlantIds.has(plantId)) {
+            this._plantSprites[plantId].destroy();
+            delete this._plantSprites[plantId];
+          }
+        }
 
         for (const p of Object.values(players)) {
           const spriteKey = this._colorToSpriteKey(p.color);
@@ -362,12 +391,13 @@
 
             const bg = this.add.rectangle(sx, sy - 12, DISPLAY_GRID + 2, 5, 0x1f1f33);
             bg.setVisible(false);
-            const fill = this.add.rectangle(sx - DISPLAY_GRID / 2, sy - 12, 0, 3, 0x4a4a8a);
+            bg.height = 7;
+            const fill = this.add.rectangle(sx - DISPLAY_GRID / 2, sy - 12, 0, 5, 0x4a4a8a);
             fill.setOrigin(0, 0.5);
             fill.setVisible(false);
             this._progressBars[p.id] = { bg, fill };
             const lbl = this.add.text(sx, sy - 9, p.name, {
-              fontSize: '7px',
+              fontSize: '6px',
               fontFamily: 'Arial, sans-serif',
               color: '#ffffff',
               stroke: '#000000',
@@ -406,17 +436,17 @@
               const elapsed = Date.now() - progressAction.startedAt;
               const ratio = Math.max(0, Math.min(1, elapsed / progressAction.durationMs));
               const barWidth = DISPLAY_GRID + 2;
-              bar.bg.setPosition(loc.x, loc.y - 14);
+              bar.bg.setPosition(loc.x, loc.y - 22);
               bar.bg.setVisible(true);
               bar.fill.width = barWidth * ratio;
-              bar.fill.setPosition(loc.x - barWidth / 2, loc.y - 14);
+              bar.fill.setPosition(loc.x - barWidth / 2, loc.y - 22);
               bar.fill.setVisible(true);
             } else {
               bar.bg.setVisible(false);
               bar.fill.setVisible(false);
             }
           }
-          if (this._labels[p.id]) this._labels[p.id].setPosition(loc.x, loc.y - 9);
+          if (this._labels[p.id]) this._labels[p.id].setPosition(loc.x, loc.y - 10);
         }
 
         // Remove sprites for disconnected players
@@ -485,6 +515,7 @@
 
       if (msg.type === 'action_update') {
         inProgressByPlayer = msg.inProgressByPlayer || {};
+        plants = msg.plants || [];
       }
 
       if (msg.type === 'reload_map') {
