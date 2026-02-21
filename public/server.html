@@ -198,6 +198,7 @@
 
       _setupPlayers() {
         this._sprites = {};  // id → Phaser.GameObjects.Sprite
+        this._labels = {};   // id → Phaser.GameObjects.Text
         this._local = {};    // id → { x, y } — client-extrapolated pixel positions (display scale)
         this._progressBars = {}; // id -> { bg, fill }
       }
@@ -233,6 +234,15 @@
             fill.setOrigin(0, 0.5);
             fill.setVisible(false);
             this._progressBars[p.id] = { bg, fill };
+            const lbl = this.add.text(sx, sy - 9, p.name, {
+              fontSize: '7px',
+              fontFamily: 'Arial, sans-serif',
+              color: '#ffffff',
+              stroke: '#000000',
+              strokeThickness: 1.5,
+              resolution: window.devicePixelRatio * 4,
+            }).setOrigin(0.5, 1);
+            this._labels[p.id] = lbl;
           }
 
           const spr = this._sprites[p.id];
@@ -274,6 +284,7 @@
               bar.fill.setVisible(false);
             }
           }
+          if (this._labels[p.id]) this._labels[p.id].setPosition(loc.x, loc.y - 9);
         }
 
         // Remove sprites for disconnected players
@@ -281,6 +292,7 @@
           if (!activeIds.has(id)) {
             this._sprites[id].destroy();
             delete this._sprites[id];
+            if (this._labels[id]) { this._labels[id].destroy(); delete this._labels[id]; }
             delete this._local[id];
             if (this._progressBars[id]) {
               this._progressBars[id].bg.destroy();
