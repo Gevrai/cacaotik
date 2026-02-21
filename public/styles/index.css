@@ -130,15 +130,6 @@ body {
   letter-spacing: 1px;
 }
 
-#dot {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: #555;
-  border: 3px solid #fff;
-  margin: 0 auto;
-}
-
 #action-card {
   width: min(94vw, 340px);
   border: 2px solid #555;
@@ -147,6 +138,41 @@ body {
   padding: 12px;
   display: grid;
   gap: 8px;
+}
+
+#player-inventory {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.inventory-bubble {
+  background: #1f1f33;
+  border: 2px solid #555;
+  border-radius: 12px;
+  padding: 8px 6px;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.inventory-icon {
+  width: min(22vw, 52px);
+  height: min(22vw, 52px);
+  image-rendering: pixelated;
+}
+
+.inventory-value {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+}
+
+.inventory-type {
+  font-size: 11px;
+  color: #aaa;
+  letter-spacing: 0.4px;
 }
 
 #action-role {
@@ -219,8 +245,29 @@ body {
   color: #fff;
 }
 
-#player-water {
+.inventory-money-icon {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
   font-size: 14px;
+  font-weight: 700;
+  color: #ffd166;
+  border: 1px solid #ffd166;
+  border-radius: 4px;
+}
+
+#player-money-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+#player-water,
+#player-seeds,
+#player-cacao {
+  font-size: 20px;
   color: #fff;
 }
 

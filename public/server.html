@@ -18,7 +18,7 @@
       <li>parler aux abeilles</li>
       <li>récolter le cacao</li>
       <li>mettre le feu</li>
-      <li>caresser le lama</li>
+      <li>papouiller le lama</li>
     </ul>
   </div>
   <div id="game"></div>
@@ -92,6 +92,7 @@
         this.load.image('lapin_run1', `/assets/characters/lapin/lapin_run1.png?t=${t}`);
         this.load.image('lapin_run2', `/assets/characters/lapin/lapin_run2.png?t=${t}`);
         this.load.image('lapin_cacao_tile', `/assets/tiles/tile_0160_lapin_cac.png?t=${t}`);
+        this.load.image('llama_heart_tile', `/assets/tiles/tile_0165_coeur.png?t=${t}`);
       }
 
       create() {
@@ -317,18 +318,22 @@
           img.setScale(20 / img.width); // roughly 1.25 tiles tall
           img.setDepth(5);
 
-          const state = 'stand';
+          const roll = Math.random();
+          const state = roll < 0.4 ? 'sit' : roll < 0.7 ? 'stand' : 'walk';
+          const angle = Math.random() * Math.PI * 2;
           this._llamas.push({
             img,
             state,           // 'walk' | 'stand' | 'sit'
-            vx: 0,
-            vy: 0,
-            stateTimer: 999999,
+            vx: state === 'walk' ? Math.cos(angle) * LLAMA_SPEED : 0,
+            vy: state === 'walk' ? Math.sin(angle) * LLAMA_SPEED : 0,
+            stateTimer: 2 + Math.random() * 5,
             frameTimer: 0,
             frameCurrent: 0,
-            fixed: true,
+            homeX: x,
+            homeY: y,
+            roamRadius: 26,
           });
-          img.setTexture('llama_stand');
+          img.setTexture(state === 'sit' ? 'llama_sit' : 'llama_stand');
         }
         this._llamaMapW = MAP_W;
         this._llamaMapH = MAP_H;
@@ -397,19 +402,23 @@
           img.setDepth(5);
           if (variety === 'brown') img.setTint(0xc89460); // warm light brown
 
-          const state = 'sit';
+          const roll = Math.random();
+          const state = roll < 0.4 ? 'sit' : 'run';
+          const angle = Math.random() * Math.PI * 2;
           this._lapins.push({
             img,
             variety,
             state,           // 'run' | 'sit'
-            vx: 0,
-            vy: 0,
-            stateTimer: 999999,
+            vx: state === 'run' ? Math.cos(angle) * LAPIN_SPEED : 0,
+            vy: state === 'run' ? Math.sin(angle) * LAPIN_SPEED : 0,
+            stateTimer: 1 + Math.random() * 4,
             frameTimer: 0,
             frameCurrent: 0,
-            fixed: true,
+            homeX: x,
+            homeY: y,
+            roamRadius: 30,
           });
-          img.setTexture('lapin_sit');
+          img.setTexture(state === 'sit' ? 'lapin_sit' : 'lapin_run1');
         }
         this._lapinMapW = MAP_W;
         this._lapinMapH = MAP_H;
@@ -492,7 +501,6 @@
           const MARGIN = this._llamaMargin;
           const SPEED = this._llamaSpeed;
           for (const l of this._llamas) {
-            if (l.fixed) continue;
             l.stateTimer -= dt_s;
             if (l.stateTimer <= 0) {
               // Weighted transition: 40% sit, 30% stand, 30% walk
@@ -525,6 +533,15 @@
               if (l.img.x > MAP_W - MARGIN) { l.img.x = MAP_W - MARGIN; l.vx = -Math.abs(l.vx); }
               if (l.img.y < MARGIN)        { l.img.y = MARGIN;        l.vy =  Math.abs(l.vy); }
               if (l.img.y > MAP_H - MARGIN) { l.img.y = MAP_H - MARGIN; l.vy = -Math.abs(l.vy); }
+
+              if (Math.abs(l.img.x - l.homeX) > l.roamRadius) {
+                l.img.x = l.homeX + Math.sign(l.img.x - l.homeX) * l.roamRadius;
+                l.vx = -l.vx;
+              }
+              if (Math.abs(l.img.y - l.homeY) > l.roamRadius) {
+                l.img.y = l.homeY + Math.sign(l.img.y - l.homeY) * l.roamRadius;
+                l.vy = -l.vy;
+              }
 
               // Sprites face left — flip when moving right
               l.img.setFlipX(l.vx > 0);
@@ -572,7 +589,6 @@
           const MARGIN = this._lapinMargin;
           const SPEED = this._lapinSpeed;
           for (const l of this._lapins) {
-            if (l.fixed) continue;
             l.stateTimer -= dt_s;
             if (l.stateTimer <= 0) {
               // Weighted: 30% sit, 70% run
@@ -621,6 +637,15 @@
               if (l.img.x > MAP_W - MARGIN)  { l.img.x = MAP_W - MARGIN; l.vx = -Math.abs(l.vx); }
               if (l.img.y < MARGIN)         { l.img.y = MARGIN;         l.vy =  Math.abs(l.vy); }
               if (l.img.y > MAP_H - MARGIN)  { l.img.y = MAP_H - MARGIN; l.vy = -Math.abs(l.vy); }
+
+              if (Math.abs(l.img.x - l.homeX) > l.roamRadius) {
+                l.img.x = l.homeX + Math.sign(l.img.x - l.homeX) * l.roamRadius;
+                l.vx = -l.vx;
+              }
+              if (Math.abs(l.img.y - l.homeY) > l.roamRadius) {
+                l.img.y = l.homeY + Math.sign(l.img.y - l.homeY) * l.roamRadius;
+                l.vy = -l.vy;
+              }
 
               l.img.setFlipX(l.vx > 0);
 
@@ -949,6 +974,40 @@
       }
     }
 
+    function emitLlamaHeartBurst(gridX, gridY) {
+      const scene = game.scene.getScene('GameScene');
+      if (!scene || !scene.add || !scene.tweens) return;
+
+      const DISPLAY_GRID = 16;
+      const centerX = gridX * DISPLAY_GRID + DISPLAY_GRID / 2;
+      const centerY = gridY * DISPLAY_GRID + DISPLAY_GRID / 2;
+      const burstCount = 18;
+
+      for (let i = 0; i < burstCount; i++) {
+        const heart = scene.add.image(centerX, centerY, 'llama_heart_tile');
+        heart.setDisplaySize(14, 14);
+        heart.setDepth(30);
+
+        const driftX = (Math.random() - 0.5) * 42;
+        const floatY = 18 + Math.random() * 26;
+        const delay = Math.random() * 500;
+        const duration = 2100 + Math.random() * 600;
+
+        scene.tweens.add({
+          targets: heart,
+          x: centerX + driftX,
+          y: centerY - floatY,
+          alpha: { from: 0.95, to: 0 },
+          scaleX: { from: 0.7, to: 1.05 },
+          scaleY: { from: 0.7, to: 1.05 },
+          ease: 'Sine.Out',
+          delay,
+          duration,
+          onComplete: () => heart.destroy(),
+        });
+      }
+    }
+
     ws.onopen = () => { statusEl.textContent = 'display connected'; };
     ws.onclose = () => { statusEl.textContent = 'disconnected'; };
 
@@ -967,6 +1026,16 @@
         beeFlights = msg.beeFlights || [];
         fireBursts = msg.fireBursts || [];
         rabbitCacaoTiles = msg.rabbitCacaoTiles || [];
+      }
+
+      if (msg.type === 'action_result') {
+        const isLlamaPet = msg.success && msg.actionKey === 'pet_llama';
+        if (isLlamaPet) {
+          const fallbackCell = LLAMA_CELLS[0];
+          const gx = Number.isFinite(msg.targetGridX) ? msg.targetGridX : fallbackCell.x;
+          const gy = Number.isFinite(msg.targetGridY) ? msg.targetGridY : fallbackCell.y;
+          emitLlamaHeartBurst(gx, gy);
+        }
       }
 
       if (msg.type === 'reload_map') {

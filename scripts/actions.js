@@ -43,7 +43,7 @@ const ACTION_LIBRARY = {
   },
   pet_llama: {
     key: 'pet_llama',
-    title: 'Caresser le lama',
+    title: 'Papouiller le lama',
     targetName: 'Lama',
     durationMs: 3000,
   },
@@ -51,6 +51,12 @@ const ACTION_LIBRARY = {
     key: 'feed_rabbit',
     title: 'Nourrir le lapin',
     targetName: 'Lapin',
+    durationMs: 3000,
+  },
+  harvest_choco: {
+    key: 'harvest_choco',
+    title: 'Récolter le caca en chocolat',
+    targetName: 'Caca chocolaté',
     durationMs: 3000,
   },
 };
@@ -151,6 +157,7 @@ function createActionManager(options = {}) {
         hasWater: false,
         seeds: 1,
         cacao: 0,
+        money: 0,
       };
     }
     return inventoryByProfile[profileKey];
@@ -234,6 +241,25 @@ function createActionManager(options = {}) {
       }
     }
     return null;
+  }
+
+  function getNearestRabbitCacaoTileForPlayer(player) {
+    let nearest = null;
+    let bestDistance = Infinity;
+
+    for (const tile of rabbitCacaoTiles) {
+      const isReachable = isAdjacent8(player, tile.targetGridX, tile.targetGridY)
+        || (player.gridX === tile.targetGridX && player.gridY === tile.targetGridY);
+      if (!isReachable) continue;
+
+      const distance = Math.abs(player.gridX - tile.targetGridX) + Math.abs(player.gridY - tile.targetGridY);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        nearest = tile;
+      }
+    }
+
+    return nearest;
   }
 
   function toAction(def, extras = {}) {
@@ -413,6 +439,19 @@ function createActionManager(options = {}) {
     });
   }
 
+  function getHarvestChocoAction(playerId, player) {
+    const targetTile = getNearestRabbitCacaoTileForPlayer(player);
+
+    return toAction(actionLibrary.harvest_choco, {
+      actorId: playerId,
+      gridX: targetTile ? targetTile.targetGridX : null,
+      gridY: targetTile ? targetTile.targetGridY : null,
+      isVisible: Boolean(targetTile),
+      canInteract: Boolean(targetTile),
+      blockedReason: targetTile ? null : 'Approche-toi d’un caca chocolaté.',
+    });
+  }
+
   function getActionsForPlayer(playerId, playersById) {
     const player = playersById[playerId];
     if (!player) return null;
@@ -429,6 +468,7 @@ function createActionManager(options = {}) {
       burn_tree: getBurnTreeAction(playerId, player),
       pet_llama: getPetLlamaAction(playerId, player),
       feed_rabbit: getFeedRabbitAction(playerId, player),
+      harvest_choco: getHarvestChocoAction(playerId, player),
       activeAction,
     };
   }
@@ -441,6 +481,7 @@ function createActionManager(options = {}) {
     const hasWaterPublicByPlayer = {};
     const seedsPublicByPlayer = {};
     const cacaoPublicByPlayer = {};
+    const moneyPublicByPlayer = {};
 
     const playerIds = Object.keys(playersById).map(Number);
 
@@ -450,6 +491,7 @@ function createActionManager(options = {}) {
       hasWaterPublicByPlayer[playerId] = Boolean(inventory && inventory.hasWater);
       seedsPublicByPlayer[playerId] = inventory ? inventory.seeds : 0;
       cacaoPublicByPlayer[playerId] = inventory ? inventory.cacao : 0;
+      moneyPublicByPlayer[playerId] = inventory ? inventory.money : 0;
       if (inProgressByPlayer[playerId]) {
         inProgressPublicByPlayer[playerId] = inProgressByPlayer[playerId];
       }
@@ -461,6 +503,7 @@ function createActionManager(options = {}) {
       hasWaterByPlayer: hasWaterPublicByPlayer,
       seedsByPlayer: seedsPublicByPlayer,
       cacaoByPlayer: cacaoPublicByPlayer,
+      moneyByPlayer: moneyPublicByPlayer,
       plants: plants.map(plant => ({
         id: plant.id,
         gridX: plant.gridX,
@@ -619,6 +662,16 @@ function createActionManager(options = {}) {
           }
         }
       }
+
+      if (finishedAction.key === 'harvest_choco') {
+        const tileIndex = rabbitCacaoTiles.findIndex(
+          tile => tile.targetGridX === finishedAction.gridX && tile.targetGridY === finishedAction.gridY,
+        );
+        if (tileIndex >= 0) {
+          rabbitCacaoTiles.splice(tileIndex, 1);
+          inventory.money += 500;
+        }
+      }
     }
 
     onActionResult({
@@ -627,9 +680,12 @@ function createActionManager(options = {}) {
       success,
       message,
       playerId,
+      targetGridX: finishedAction ? finishedAction.gridX : null,
+      targetGridY: finishedAction ? finishedAction.gridY : null,
       hasWater: Boolean(inventory && inventory.hasWater),
       seeds: inventory ? inventory.seeds : 0,
       cacao: inventory ? inventory.cacao : 0,
+      money: inventory ? inventory.money : 0,
     });
 
     emitActionChange(playersById);
@@ -707,6 +763,15 @@ function createActionManager(options = {}) {
       )) && Boolean(inventory && inventory.cacao > 0);
     }
 
+    if (action.key === 'harvest_choco') {
+      return rabbitCacaoTiles.some(tile => (
+        tile.targetGridX === action.gridX
+        && tile.targetGridY === action.gridY
+        && (isAdjacent8(player, tile.targetGridX, tile.targetGridY)
+          || (player.gridX === tile.targetGridX && player.gridY === tile.targetGridY))
+      ));
+    }
+
     return true;
   }
 
@@ -752,6 +817,7 @@ function createActionManager(options = {}) {
         hasWater: Boolean(inventory && inventory.hasWater),
         seeds: inventory ? inventory.seeds : 0,
         cacao: inventory ? inventory.cacao : 0,
+        money: inventory ? inventory.money : 0,
       });
       return;
     }
@@ -766,6 +832,7 @@ function createActionManager(options = {}) {
         hasWater: Boolean(inventory && inventory.hasWater),
         seeds: inventory ? inventory.seeds : 0,
         cacao: inventory ? inventory.cacao : 0,
+        money: inventory ? inventory.money : 0,
       });
       return;
     }
@@ -780,6 +847,7 @@ function createActionManager(options = {}) {
         hasWater: Boolean(inventory && inventory.hasWater),
         seeds: inventory ? inventory.seeds : 0,
         cacao: inventory ? inventory.cacao : 0,
+        money: inventory ? inventory.money : 0,
       });
       return;
     }
@@ -801,8 +869,9 @@ function createActionManager(options = {}) {
       if (actionToStart.key === 'fetch_seed') successMessage = '1 cacao transformé en 3 graines.';
       if (actionToStart.key === 'talk_bees') successMessage = 'Les abeilles vont butiner puis revenir à la ruche.';
       if (actionToStart.key === 'burn_tree') successMessage = 'Le feu prend sur l’arbre.';
-      if (actionToStart.key === 'pet_llama') successMessage = 'Le lama adore les caresses.';
+      if (actionToStart.key === 'pet_llama') successMessage = 'Le lama adore les papouilles.';
       if (actionToStart.key === 'feed_rabbit') successMessage = 'Le lapin a mangé 1 cacao.';
+      if (actionToStart.key === 'harvest_choco') successMessage = '+500$ pour le caca en chocolat.';
 
       finishAction(
         playerId,

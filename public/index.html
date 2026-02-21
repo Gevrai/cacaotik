@@ -38,9 +38,25 @@
 
   <div id="game">
     <div id="info">connecting…</div>
-    <div id="dot"></div>
 
     <div id="action-card">
+      <div id="player-inventory">
+        <div class="inventory-bubble">
+          <img id="player-water-icon" class="inventory-icon" src="/assets/tiles/tile_0164_sceau_vide.png" alt="Eau" />
+          <span id="player-water" class="inventory-value">0</span>
+          <span class="inventory-type">Eau</span>
+        </div>
+        <div class="inventory-bubble">
+          <img class="inventory-icon" src="/assets/tiles/tile_0162_sacSeeds.png" alt="Graines" />
+          <span id="player-seeds" class="inventory-value">0</span>
+          <span class="inventory-type">Graines</span>
+        </div>
+        <div class="inventory-bubble">
+          <img class="inventory-icon" src="/assets/tiles/tile_0163_cacaoFeve.png" alt="Cacao" />
+          <span id="player-cacao" class="inventory-value">0</span>
+          <span class="inventory-type">Cacao</span>
+        </div>
+      </div>
       <div id="action-role">En attente d'action…</div>
       <div id="action-timer">—</div>
       <div id="action-progress" aria-hidden="true">
@@ -54,13 +70,14 @@
         <button class="action-btn" data-action="talk_bees" type="button">Parler aux abeilles</button>
         <button class="action-btn" data-action="harvest_cacao" type="button">Récolter le cacao</button>
         <button class="action-btn" data-action="burn_tree" type="button">Mettre le feu</button>
-        <button class="action-btn" data-action="pet_llama" type="button">Caresser le lama</button>
+        <button class="action-btn" data-action="pet_llama" type="button">Papouiller le lama</button>
         <button class="action-btn" data-action="feed_rabbit" type="button">Nourrir le lapin</button>
+        <button class="action-btn" data-action="harvest_choco" type="button">Récolter le caca en chocolat</button>
       </div>
-      <div id="player-position">Position: —</div>
-      <div id="player-water">Eau: Non</div>
-      <div id="player-seeds">Graines: 0</div>
-      <div id="player-cacao">Cacao: 0</div>
+      <div id="player-money-item" style="display: none;">
+        <span class="inventory-money-icon">$</span>
+        <span id="player-money">Argent: 0$</span>
+      </div>
     </div>
 
     <div id="joystick" aria-label="movement joystick">
@@ -119,7 +136,6 @@
     });
 
     const infoEl = document.getElementById('info');
-    const dotEl = document.getElementById('dot');
     const statusEl = document.getElementById('status');
     const joystickEl = document.getElementById('joystick');
     const joystickBaseEl = document.getElementById('joystick-base');
@@ -129,10 +145,15 @@
     const actionTimerEl = document.getElementById('action-timer');
     const actionProgressEl = document.getElementById('action-progress');
     const actionProgressFillEl = document.getElementById('action-progress-fill');
-    const playerPositionEl = document.getElementById('player-position');
+    const playerWaterIconEl = document.getElementById('player-water-icon');
     const playerWaterEl = document.getElementById('player-water');
     const playerSeedsEl = document.getElementById('player-seeds');
     const playerCacaoEl = document.getElementById('player-cacao');
+    const playerMoneyItemEl = document.getElementById('player-money-item');
+    const playerMoneyEl = document.getElementById('player-money');
+
+    const WATER_ICON_EMPTY = '/assets/tiles/tile_0164_sceau_vide.png';
+    const WATER_ICON_FULL = '/assets/tiles/tile_0164_sceau_plein.png';
 
     actionBtnEls.forEach(button => {
       button.dataset.baseLabel = button.textContent.trim();
@@ -162,6 +183,24 @@
 
     function getActionFromKey(actionKey) {
       return actionsByKey[actionKey] || null;
+    }
+
+    function updateWaterInventory(hasWater) {
+      playerWaterEl.textContent = hasWater ? '1' : '0';
+      playerWaterIconEl.src = hasWater ? WATER_ICON_FULL : WATER_ICON_EMPTY;
+    }
+
+    function updateSeedsInventory(seeds) {
+      playerSeedsEl.textContent = `${seeds}`;
+    }
+
+    function updateCacaoInventory(cacao) {
+      playerCacaoEl.textContent = `${cacao}`;
+    }
+
+    function updateMoneyInventory(money) {
+      playerMoneyEl.textContent = `Argent: ${money}$`;
+      playerMoneyItemEl.style.display = money > 0 ? 'flex' : 'none';
     }
 
     function setActionButtonContent(button, label, reason = null) {
@@ -256,19 +295,10 @@
         if (msg.type === 'init') {
           myId = msg.id;
           infoEl.textContent = msg.name || `Joueur ${myId}`;
-          dotEl.style.background = msg.color;
           statusEl.textContent = 'prêt';
           updateMyActionFromSnapshot();
           renderAction();
         }
-
-        if (msg.type === 'state' && myId) {
-          const me = msg.players.find(player => player.id === myId);
-          if (me) {
-            playerPositionEl.textContent = `Position: (${me.gridX}, ${me.gridY})`;
-          }
-        }
-
 
         if (msg.type === 'action_update') {
           const myActions = (msg.actionsByPlayer && myId)
@@ -278,19 +308,25 @@
           if (msg.hasWaterByPlayer) {
             const hasWater = msg.hasWaterByPlayer[myId] ?? msg.hasWaterByPlayer[String(myId)];
             if (typeof hasWater === 'boolean') {
-              playerWaterEl.textContent = `Eau: ${hasWater ? 'Oui' : 'Non'}`;
+              updateWaterInventory(hasWater);
             }
           }
           if (msg.seedsByPlayer) {
             const seeds = msg.seedsByPlayer[myId] ?? msg.seedsByPlayer[String(myId)];
             if (typeof seeds === 'number') {
-              playerSeedsEl.textContent = `Graines: ${seeds}`;
+              updateSeedsInventory(seeds);
             }
           }
           if (msg.cacaoByPlayer) {
             const cacao = msg.cacaoByPlayer[myId] ?? msg.cacaoByPlayer[String(myId)];
             if (typeof cacao === 'number') {
-              playerCacaoEl.textContent = `Cacao: ${cacao}`;
+              updateCacaoInventory(cacao);
+            }
+          }
+          if (msg.moneyByPlayer) {
+            const money = msg.moneyByPlayer[myId] ?? msg.moneyByPlayer[String(myId)];
+            if (typeof money === 'number') {
+              updateMoneyInventory(money);
             }
           }
           updateMyActionFromSnapshot();
@@ -302,13 +338,16 @@
             if (msg.success && msg.actionKey === 'harvest_cacao') playSound('success');
             statusEl.textContent = msg.message || 'action update';
             if (typeof msg.hasWater === 'boolean') {
-              playerWaterEl.textContent = `Eau: ${msg.hasWater ? 'Oui' : 'Non'}`;
+              updateWaterInventory(msg.hasWater);
             }
             if (typeof msg.seeds === 'number') {
-              playerSeedsEl.textContent = `Graines: ${msg.seeds}`;
+              updateSeedsInventory(msg.seeds);
             }
             if (typeof msg.cacao === 'number') {
-              playerCacaoEl.textContent = `Cacao: ${msg.cacao}`;
+              updateCacaoInventory(msg.cacao);
+            }
+            if (typeof msg.money === 'number') {
+              updateMoneyInventory(msg.money);
             }
           }
         }
