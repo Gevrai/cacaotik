@@ -2,3 +2,25 @@
 body { background: #1a1a2e; overflow: hidden; }
 canvas { display: block; }
 #status { position: fixed; top: 8px; right: 12px; color: #aaa; font: 14px monospace; }
+#connect-panel {
+	position: fixed;
+	left: 50%;
+	bottom: 12px;
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 12px 14px;
+	border: 1px solid #2a2a4a;
+	background: rgba(26, 26, 46, 0.92);
+}
+#connect-qr {
+	width: 120px;
+	height: 120px;
+	display: block;
+	background: #fff;
+}
+#connect-url {
+	color: #fff;
+	font: 18px monospace;
+}

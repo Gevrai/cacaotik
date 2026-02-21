@@ -1,16 +1,54 @@
 const express = require('express');
 const http = require('http');
+const os = require('os');
+const QRCode = require('qrcode');
 const { setupWebSocket } = require('./scripts/websocket');
 
 const app = express();
 const server = http.createServer(app);
 setupWebSocket(server);
 
+function getLanIp() {
+  const interfaces = os.networkInterfaces();
+
+  for (const entries of Object.values(interfaces)) {
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (entry && entry.family === 'IPv4' && !entry.internal) {
+        return entry.address;
+      }
+    }
+  }
+
+  return '127.0.0.1';
+}
+
+app.get('/connect-info', async (req, res) => {
+  try {
+    const port = process.env.PORT || 3000;
+    const lanIp = getLanIp();
+    const connectUrl = `http://${lanIp}:${port}/`;
+    const qrDataUrl = await QRCode.toDataURL(connectUrl, {
+      width: 320,
+      margin: 1,
+    });
+
+    res.json({
+      connectUrl,
+      qrDataUrl,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Unable to generate connect QR code',
+    });
+  }
+});
+
 app.use(express.static('public'));
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running at http://0.0.0.0:${PORT}`);
-  console.log(`  Display: http://localhost:${PORT}/`);
-  console.log(`  Mobile:  http://<LAN_IP>:${PORT}/client.html`);
+  console.log(`  Display: http://localhost:${PORT}/server.html`);
+  console.log(`  Mobile:  http://<LAN_IP>:${PORT}/`);
 });
