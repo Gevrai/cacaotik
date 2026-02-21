@@ -41,11 +41,11 @@ function isPositionBlocked(x, y, blockedCells, gridCols, gridRows) {
 
 // Advance player position by dt milliseconds, with axis-separated collision sliding
 function tickPlayer(player, dtMs, context) {
-  const { gridCols, gridRows, blockedCells } = context;
+  const { gridCols, gridRows, blockedCells, speedMultiplier = 1 } = context;
   const dt = dtMs / 1000;
 
-  const dx = player.vx * dt;
-  const dy = player.vy * dt;
+  const dx = player.vx * speedMultiplier * dt;
+  const dy = player.vy * speedMultiplier * dt;
 
   // Try X axis
   let nx = player.x + dx;

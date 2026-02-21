@@ -426,6 +426,7 @@
         this._flightBees = {}; // id -> Phaser.GameObjects.Graphics
         this._fireBursts = {}; // id -> Phaser.GameObjects.Graphics
         this._rabbitCacaoSprites = {}; // id -> Phaser.GameObjects.Image
+        this._swimData = {}; // id -> { foam: Graphics, swimTime: number }
       }
 
       update(time, delta) {
@@ -838,7 +839,39 @@
           const targetAnim = moving ? `run_${colorName}` : `idle_${colorName}`;
           if (spr.anims.currentAnim?.key !== targetAnim) spr.play(targetAnim);
 
-          spr.setPosition(loc.x, loc.y);
+          // Swimming effect
+          if (!this._swimData[p.id]) {
+            const foam = this.add.graphics();
+            foam.setDepth(19);
+            this._swimData[p.id] = { foam, swimTime: 0 };
+          }
+          const swim = this._swimData[p.id];
+
+          if (p.inWater) {
+            swim.swimTime += dt;
+            const bob = Math.sin(swim.swimTime * 2.8) * 1.5;
+
+            // Crop to top 60% of the 24px frame
+            spr.setCrop(0, 0, 24, 15);
+            spr.setPosition(loc.x, loc.y + bob - 3);
+
+            // Foam ring
+            const foamPhase = swim.swimTime * 1.4;
+            const pulseR = 5.5 + Math.sin(foamPhase) * 0.8;
+            swim.foam.clear();
+            swim.foam.lineStyle(1, 0xddeeff, 0.45 + Math.sin(foamPhase * 1.7) * 0.15);
+            swim.foam.strokeEllipse(loc.x, loc.y + bob, pulseR * 2.2, pulseR * 0.9);
+            swim.foam.lineStyle(0.7, 0xffffff, 0.25);
+            swim.foam.strokeEllipse(loc.x, loc.y + bob, (pulseR + 1.5) * 2.2, (pulseR + 1.5) * 0.9);
+          } else {
+            // Reset crop when out of water
+            spr.setCrop(0, 0, 24, 24);
+            spr.setPosition(loc.x, loc.y);
+            swim.foam.clear();
+            swim.swimTime = 0;
+          }
+
+          const sprY = p.inWater ? loc.y + Math.sin(swim.swimTime * 2.8) * 1.5 - 3 : loc.y;
 
           const bar = this._progressBars[p.id];
           if (bar) {
@@ -847,17 +880,17 @@
               const elapsed = Date.now() - progressAction.startedAt;
               const ratio = Math.max(0, Math.min(1, elapsed / progressAction.durationMs));
               const barWidth = DISPLAY_GRID + 2;
-              bar.bg.setPosition(loc.x, loc.y - 22);
+              bar.bg.setPosition(loc.x, sprY - 22);
               bar.bg.setVisible(true);
               bar.fill.width = barWidth * ratio;
-              bar.fill.setPosition(loc.x - barWidth / 2, loc.y - 22);
+              bar.fill.setPosition(loc.x - barWidth / 2, sprY - 22);
               bar.fill.setVisible(true);
             } else {
               bar.bg.setVisible(false);
               bar.fill.setVisible(false);
             }
           }
-          if (this._labels[p.id]) this._labels[p.id].setPosition(loc.x, loc.y - 10);
+          if (this._labels[p.id]) this._labels[p.id].setPosition(loc.x, sprY - 10);
         }
 
         // Remove sprites for disconnected players
@@ -871,6 +904,10 @@
               this._progressBars[id].bg.destroy();
               this._progressBars[id].fill.destroy();
               delete this._progressBars[id];
+            }
+            if (this._swimData[id]) {
+              this._swimData[id].foam.destroy();
+              delete this._swimData[id];
             }
           }
         }

@@ -5,6 +5,42 @@ const { tickPlayer, velocityFromDirection, GRID_SIZE } = require('./movement');
 const { createActionManager } = require('./actions');
 const { loadMapNavigation } = require('./map-nav');
 
+// Load water cells by reading the 'mare' tile layer from basemap1.tmj
+function loadWaterCells(tmjPath) {
+  const fs = require('fs');
+  const map = JSON.parse(fs.readFileSync(tmjPath, 'utf8'));
+
+  // Flatten nested layer groups to find any tilelayer named with 'mare'
+  function collectLayers(layers) {
+    const result = [];
+    for (const l of layers) {
+      if (l.type === 'tilelayer') result.push(l);
+      else if (l.layers) result.push(...collectLayers(l.layers));
+    }
+    return result;
+  }
+
+  const mareLayers = collectLayers(map.layers).filter(l => l.name.toLowerCase().includes('mare'));
+  const cells = new Set();
+  for (const layer of mareLayers) {
+    const w = layer.width;
+    layer.data.forEach((tile, i) => {
+      if (tile !== 0) {
+        const gx = i % w;
+        const gy = Math.floor(i / w);
+        cells.add(`${gx},${gy}`);
+      }
+    });
+  }
+  return cells;
+}
+
+let WATER_CELLS = new Set();
+
+function isInWater(player) {
+  return WATER_CELLS.has(`${player.gridX},${player.gridY}`);
+}
+
 const CHARACTER_KEYS = ['red', 'blue', 'white', 'yellow'];
 const CHARACTER_COLORS = {
   red: '#e74c3c',
@@ -66,6 +102,7 @@ function setupWebSocket(server) {
   let nextId = 1;
   const assetsDir = path.join(__dirname, '..', 'public', 'assets');
   const mapFilePath = path.join(assetsDir, 'basemap2.tmj');
+  const map1FilePath = path.join(assetsDir, 'basemap1.tmj');
 
   let nav;
 
@@ -83,7 +120,17 @@ function setupWebSocket(server) {
     }
   }
 
+  function reloadWaterCells() {
+    try {
+      WATER_CELLS = loadWaterCells(map1FilePath);
+      console.log(`[websocket] water cells loaded from basemap1.tmj (${WATER_CELLS.size} cells)`);
+    } catch (error) {
+      console.warn('[websocket] failed to load water cells from basemap1.tmj:', error.message);
+    }
+  }
+
   reloadNavigation();
+  reloadWaterCells();
 
   function broadcast(payload) {
     const msg = JSON.stringify(payload);
@@ -132,6 +179,7 @@ function setupWebSocket(server) {
         vy: p.vy,
         gridX: p.gridX,
         gridY: p.gridY,
+        inWater: isInWater(p),
       })),
     };
     broadcast(state);
@@ -186,6 +234,7 @@ function setupWebSocket(server) {
           gridCols: nav.gridCols,
           gridRows: nav.gridRows,
           blockedCells: mergedBlocked,
+          speedMultiplier: isInWater(player) ? 0.45 : 1,
         });
         anyMoving = true;
       }
@@ -296,6 +345,9 @@ function setupWebSocket(server) {
   watchMaps(assetsDir, (filename) => {
     if (filename === 'basemap2.tmj') {
       reloadNavigation();
+    }
+    if (filename === 'basemap1.tmj') {
+      reloadWaterCells();
     }
     const msg = JSON.stringify({ type: 'reload_map', file: filename });
     for (const client of wss.clients) {
