@@ -172,7 +172,7 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"..\/..\/..\/..\/..\/..\/..\/tilemap_packed.tsx"
+         "source":"tilemap_packed.tsx"
         }],
  "tilewidth":16,
  "type":"map",
