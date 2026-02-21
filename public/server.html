@@ -82,6 +82,9 @@
         this.load.image('llama_walk2',  `/assets/characters/llama/llama_walk2.png?t=${t}`);
         this.load.image('llama_stand',  `/assets/characters/llama/llama_stand.png?t=${t}`);
         this.load.image('llama_sit',    `/assets/characters/llama/llama_sit.png?t=${t}`);
+        this.load.image('lapin_sit',  `/assets/characters/lapin/lapin_sit.png?t=${t}`);
+        this.load.image('lapin_run1', `/assets/characters/lapin/lapin_run1.png?t=${t}`);
+        this.load.image('lapin_run2', `/assets/characters/lapin/lapin_run2.png?t=${t}`);
       }
 
       create() {
@@ -96,6 +99,7 @@
           this._setupBees();
           this._setupGeese();
           this._setupLlamas();
+          this._setupLapins();
           return;
         }
 
@@ -148,6 +152,7 @@
           this._setupBees();
           this._setupGeese();
           this._setupLlamas();
+          this._setupLapins();
           return;
         }
 
@@ -162,6 +167,8 @@
         this._setupBees();
         this._setupGeese();
         this._setupLlamas();
+        this._buildBlockedCells(map);
+        this._setupLapins();
       }
 
       fitMapToViewport(mapWidth, mapHeight) {
@@ -325,6 +332,82 @@
         this._llamaSpeed = LLAMA_SPEED;
       }
 
+      _buildBlockedCells(map) {
+        this._blockedCells = new Set();
+        if (!map) return;
+        const TILE = 16;
+        const keywords = ['border', 'collision', 'solid', 'wall', 'palisade'];
+        const isCollision = name => keywords.some(k => name.toLowerCase().includes(k));
+
+        // Tile layers — map.layers is flat (Phaser flattens groups)
+        for (const layerData of map.layers) {
+          if (!isCollision(layerData.name || '')) continue;
+          const cols = map.width;
+          // layerData.data is a 2D array of Tile objects in Phaser
+          for (let row = 0; row < layerData.data.length; row++) {
+            for (let col = 0; col < (layerData.data[row] || []).length; col++) {
+              const tile = layerData.data[row][col];
+              if (tile && tile.index > 0) {
+                this._blockedCells.add(`${col},${row}`);
+              }
+            }
+          }
+        }
+
+        // Object layers — map.objects is a flat array of { name, objects[] }
+        for (const objLayer of map.objects || []) {
+          if (!isCollision(objLayer.name || '')) continue;
+          for (const obj of objLayer.objects || []) {
+            const ox = Number(obj.x) || 0;
+            const oy = Number(obj.y) || 0;
+            const ow = Number(obj.width) || TILE;
+            const oh = Number(obj.height) || TILE;
+            const x0 = Math.floor(ox / TILE);
+            const y0 = Math.floor(oy / TILE);
+            const x1 = Math.floor((ox + Math.max(1, ow) - 1) / TILE);
+            const y1 = Math.floor((oy + Math.max(1, oh) - 1) / TILE);
+            for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++)
+              this._blockedCells.add(`${gx},${gy}`);
+          }
+        }
+        console.log('[GameScene] blocked cells:', this._blockedCells.size);
+      }
+
+      _setupLapins() {
+        const MAP_W = 30 * 16;
+        const MAP_H = 20 * 16;
+        const MARGIN = 20;
+        const LAPIN_COUNT = 3;
+        const LAPIN_SPEED = 28; // px/s — faster than llama
+
+        this._lapins = [];
+        for (let i = 0; i < LAPIN_COUNT; i++) {
+          const x = MARGIN + Math.random() * (MAP_W - MARGIN * 2);
+          const y = MARGIN + Math.random() * (MAP_H - MARGIN * 2);
+          const img = this.add.image(x, y, 'lapin_sit');
+          img.setScale(14 / img.width); // ~14px display size
+          img.setDepth(5);
+
+          const roll = Math.random();
+          const state = roll < 0.4 ? 'sit' : 'run';
+          const angle = Math.random() * Math.PI * 2;
+          this._lapins.push({
+            img,
+            state,           // 'run' | 'sit'
+            vx: state === 'run' ? Math.cos(angle) * LAPIN_SPEED : 0,
+            vy: state === 'run' ? Math.sin(angle) * LAPIN_SPEED : 0,
+            stateTimer: 1 + Math.random() * 4,
+            frameTimer: 0,
+            frameCurrent: 0,
+          });
+          img.setTexture(state === 'sit' ? 'lapin_sit' : 'lapin_run1');
+        }
+        this._lapinMapW = MAP_W;
+        this._lapinMapH = MAP_H;
+        this._lapinMargin = MARGIN;
+        this._lapinSpeed = LAPIN_SPEED;
+      }
+
       _setupPlayers() {
         this._sprites = {};  // id → Phaser.GameObjects.Sprite
         this._labels = {};   // id → Phaser.GameObjects.Text
@@ -465,6 +548,76 @@
               a.vy -= (aDot - bDot) * ny;
               b.vx -= (bDot - aDot) * nx;
               b.vy -= (bDot - aDot) * ny;
+            }
+          }
+        }
+
+        // Animate lapins — mostly running, sometimes sit
+        if (this._lapins) {
+          const dt_s = delta / 1000;
+          const MAP_W = this._lapinMapW;
+          const MAP_H = this._lapinMapH;
+          const MARGIN = this._lapinMargin;
+          const SPEED = this._lapinSpeed;
+          for (const l of this._lapins) {
+            l.stateTimer -= dt_s;
+            if (l.stateTimer <= 0) {
+              // Weighted: 30% sit, 70% run
+              if (Math.random() < 0.3) {
+                l.state = 'sit';
+                l.vx = 0; l.vy = 0;
+                l.img.setTexture('lapin_sit');
+                l.stateTimer = 1 + Math.random() * 3;
+              } else {
+                l.state = 'run';
+                const angle = Math.random() * Math.PI * 2;
+                l.vx = Math.cos(angle) * SPEED;
+                l.vy = Math.sin(angle) * SPEED;
+                l.stateTimer = 0.5 + Math.random() * 1.5;
+              }
+            }
+
+            if (l.state === 'run') {
+              const TILE = 16;
+              const R = 5; // collision radius in px
+              const blocked = this._blockedCells;
+
+              // Axis-separated movement + tile collision
+              const nx = l.img.x + l.vx * dt_s;
+              const ny = l.img.y;
+              const gxN = Math.floor((nx + (l.vx > 0 ? R : -R)) / TILE);
+              const gyN = Math.floor((ny) / TILE);
+              if (!blocked || !blocked.has(`${gxN},${gyN}`)) {
+                l.img.x = nx;
+              } else {
+                l.vx = -l.vx;
+              }
+
+              const nx2 = l.img.x;
+              const ny2 = l.img.y + l.vy * dt_s;
+              const gxN2 = Math.floor((nx2) / TILE);
+              const gyN2 = Math.floor((ny2 + (l.vy > 0 ? R : -R)) / TILE);
+              if (!blocked || !blocked.has(`${gxN2},${gyN2}`)) {
+                l.img.y = ny2;
+              } else {
+                l.vy = -l.vy;
+              }
+
+              // Bounce off edges
+              if (l.img.x < MARGIN)         { l.img.x = MARGIN;         l.vx =  Math.abs(l.vx); }
+              if (l.img.x > MAP_W - MARGIN)  { l.img.x = MAP_W - MARGIN; l.vx = -Math.abs(l.vx); }
+              if (l.img.y < MARGIN)         { l.img.y = MARGIN;         l.vy =  Math.abs(l.vy); }
+              if (l.img.y > MAP_H - MARGIN)  { l.img.y = MAP_H - MARGIN; l.vy = -Math.abs(l.vy); }
+
+              l.img.setFlipX(l.vx > 0);
+
+              // Run animation: alternate run1/run2 every 0.12s
+              l.frameTimer += dt_s;
+              if (l.frameTimer >= 0.12) {
+                l.frameTimer = 0;
+                l.frameCurrent = 1 - l.frameCurrent;
+                l.img.setTexture(l.frameCurrent === 0 ? 'lapin_run1' : 'lapin_run2');
+              }
             }
           }
         }
