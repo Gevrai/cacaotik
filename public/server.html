@@ -186,45 +186,59 @@
       }
 
       _setupPlayers() {
-        this._sprites = {};   // id → Phaser.GameObjects.Sprite
-        this._prevPos = {};   // id → { gridX, gridY }
+        this._sprites = {};  // id → Phaser.GameObjects.Sprite
+        this._local = {};    // id → { x, y } — client-extrapolated pixel positions (display scale)
       }
 
-      update() {
+      update(time, delta) {
         if (!this._sprites) return;
-        const GRID_SIZE = 16;
+        const DISPLAY_GRID = 16; // display tile size
+        const SCALE = DISPLAY_GRID / 32; // server uses 32px grid
+        const dt = delta / 1000; // seconds
+        const CORRECTION = 0.2; // per-frame lerp strength toward server truth
 
         const activeIds = new Set(Object.keys(players));
 
         for (const p of Object.values(players)) {
-          const px = p.gridX * GRID_SIZE + GRID_SIZE / 2;
-          const py = p.gridY * GRID_SIZE + GRID_SIZE / 2;
           const spriteKey = this._colorToSpriteKey(p.color);
           const colorName = spriteKey.replace('char_', '');
 
+          // Server authoritative position in display pixels
+          const sx = p.x * SCALE;
+          const sy = p.y * SCALE;
+
           // Create sprite on first appearance
           if (!this._sprites[p.id]) {
-            const spr = this.add.sprite(px, py, spriteKey);
-            spr.setScale(GRID_SIZE / 24);   // fit sprite into grid cell
+            const spr = this.add.sprite(sx, sy, spriteKey);
+            spr.setScale(DISPLAY_GRID / 24);
             spr.play(`idle_${colorName}`);
             this._sprites[p.id] = spr;
-            this._prevPos[p.id] = { gridX: p.gridX, gridY: p.gridY };
+            this._local[p.id] = { x: sx, y: sy };
           }
 
           const spr = this._sprites[p.id];
-          const prev = this._prevPos[p.id];
-          const moved = prev.gridX !== p.gridX || prev.gridY !== p.gridY;
+          const loc = this._local[p.id];
 
-          // Flip horizontally when moving left
-          if (p.gridX < prev.gridX) spr.setFlipX(true);
-          else if (p.gridX > prev.gridX) spr.setFlipX(false);
+          const prevX = loc.x;
 
-          // Switch animation
-          const targetAnim = moved ? `run_${colorName}` : `idle_${colorName}`;
+          // Extrapolate using server velocity
+          loc.x += (p.vx || 0) * SCALE * dt;
+          loc.y += (p.vy || 0) * SCALE * dt;
+
+          // Gently correct toward server position to prevent drift
+          loc.x += (sx - loc.x) * CORRECTION;
+          loc.y += (sy - loc.y) * CORRECTION;
+
+          const moving = (p.vx !== 0 || p.vy !== 0);
+
+          // Flip horizontally based on horizontal velocity
+          if ((p.vx || 0) < 0) spr.setFlipX(true);
+          else if ((p.vx || 0) > 0) spr.setFlipX(false);
+
+          const targetAnim = moving ? `run_${colorName}` : `idle_${colorName}`;
           if (spr.anims.currentAnim?.key !== targetAnim) spr.play(targetAnim);
 
-          spr.setPosition(px, py);
-          this._prevPos[p.id] = { gridX: p.gridX, gridY: p.gridY };
+          spr.setPosition(loc.x, loc.y);
         }
 
         // Remove sprites for disconnected players
@@ -232,7 +246,7 @@
           if (!activeIds.has(id)) {
             this._sprites[id].destroy();
             delete this._sprites[id];
-            delete this._prevPos[id];
+            delete this._local[id];
           }
         }
       }

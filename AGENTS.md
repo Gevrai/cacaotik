@@ -98,15 +98,16 @@ All messages are JSON.
 | `type` | Fields | Description |
 |--------|--------|-------------|
 | `join` | `name: string, character: "red"\|"blue"\|"white"\|"yellow"` | First message after connect; registers the player with name + preferred character |
-| `move` | `dir: "up"\|"down"\|"left"\|"right"\|"up-left"\|"up-right"\|"down-left"\|"down-right"` | Move player one grid step |
+| `move` | `dir: "up"\|"down"\|"left"\|"right"\|"up-left"\|"up-right"\|"down-left"\|"down-right"` | Set player velocity in given direction (sent once on direction change) |
+| `stop` | _(none)_ | Zero player velocity (sent on joystick release) |
 | `interact` | _(none)_ | Attempt interaction for current assigned action |
 
 ### Server → Client (broadcast to all)
 
 | `type` | Fields | Description |
 |--------|--------|-------------|
-| `init` | `id, name, character, color, gridX, gridY, gridSize, gridCols, gridRows` | Sent once after `join` to the joining client with assigned character/color |
-| `state` | `players: [{id, name, character, color, gridX, gridY}]` | Full player state, sent after every change |
+| `init` | `id, name, character, color, x, y, gridX, gridY, gridSize, gridCols, gridRows` | Sent once after `join` to the joining client with assigned character/color |
+| `state` | `players: [{id, name, character, color, x, y, gridX, gridY}]` | Full player state, broadcast by game loop (~20fps) while any player is moving |
 | `action_update` | `action: {id,key,title,description,targetName,gridX,gridY,durationMs,status,requesterId,actorId,startedAt}\|null, serverTime` | Current cooperative action state (or null if unavailable) |
 | `action_result` | `actionId, success, message` | Result/feedback after interact attempts or completion |
 | `reload_map` | `file: string` | Sent when a .tmj file changes; display restarts its Phaser scene |
@@ -117,7 +118,9 @@ All messages are JSON.
 
 - Tile size: `32px`
 - Grid dimensions: loaded from `public/assets/basemap2.tmj` (currently `30 × 20`)
-- Movement is discrete — players snap to grid cells, no interpolation
+- Movement is continuous — players have pixel positions (`x`, `y`) and velocity; `gridX`/`gridY` are derived for the action system
+- Player speed: `96 px/s` (3 tiles/s); hitbox radius: `10 px`
+- Collision is axis-separated (wall sliding)
 
 ---
 

@@ -1,104 +1,87 @@
-const DIRECTION_DELTAS = {
-  up: { x: 0, y: -1 },
-  'up-right': { x: 1, y: -1 },
-  right: { x: 1, y: 0 },
-  'down-right': { x: 1, y: 1 },
-  down: { x: 0, y: 1 },
-  'down-left': { x: -1, y: 1 },
-  left: { x: -1, y: 0 },
-  'up-left': { x: -1, y: -1 },
-};
+const GRID_SIZE = 32;
+const PLAYER_SPEED = 96; // px/s — 3 tiles/s
+const PLAYER_RADIUS = 10; // px — hitbox half-size
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
+const DIRECTION_VECS = {
+  up:           { x:  0, y: -1 },
+  'up-right':   { x:  1, y: -1 },
+  right:        { x:  1, y:  0 },
+  'down-right': { x:  1, y:  1 },
+  down:         { x:  0, y:  1 },
+  'down-left':  { x: -1, y:  1 },
+  left:         { x: -1, y:  0 },
+  'up-left':    { x: -1, y: -1 },
+};
 
 function toCellKey(x, y) {
   return `${x},${y}`;
 }
 
-function isBlockedByPlayer(x, y, playersById, ignoreId) {
-  for (const player of Object.values(playersById)) {
-    if (player.id === ignoreId) continue;
-    if (player.gridX === x && player.gridY === y) return true;
+// Returns true if the given pixel point is inside a blocked or out-of-bounds cell
+function isPointBlocked(px, py, blockedCells, gridCols, gridRows) {
+  const cx = Math.floor(px / GRID_SIZE);
+  const cy = Math.floor(py / GRID_SIZE);
+  if (cx < 0 || cy < 0 || cx >= gridCols || cy >= gridRows) return true;
+  return blockedCells ? blockedCells.has(toCellKey(cx, cy)) : false;
+}
+
+// Returns true if the player's bounding box (square hitbox) overlaps any blocked cell
+function isPositionBlocked(x, y, blockedCells, gridCols, gridRows) {
+  const corners = [
+    [x - PLAYER_RADIUS, y - PLAYER_RADIUS],
+    [x + PLAYER_RADIUS, y - PLAYER_RADIUS],
+    [x - PLAYER_RADIUS, y + PLAYER_RADIUS],
+    [x + PLAYER_RADIUS, y + PLAYER_RADIUS],
+  ];
+  for (const [px, py] of corners) {
+    if (isPointBlocked(px, py, blockedCells, gridCols, gridRows)) return true;
   }
   return false;
 }
 
-function applyPlayerMove(player, direction, context) {
-  const {
-    gridCols,
-    gridRows,
-    playersById,
-    blockedCells,
-  } = context;
+// Advance player position by dt milliseconds, with axis-separated collision sliding
+function tickPlayer(player, dtMs, context) {
+  const { gridCols, gridRows, blockedCells } = context;
+  const dt = dtMs / 1000;
 
-  const delta = DIRECTION_DELTAS[direction];
-  if (!delta) {
-    return {
-      moved: false,
-      gridX: player.gridX,
-      gridY: player.gridY,
-      reason: 'invalid_direction',
-    };
+  const dx = player.vx * dt;
+  const dy = player.vy * dt;
+
+  // Try X axis
+  let nx = player.x + dx;
+  let ny = player.y;
+  if (isPositionBlocked(nx, ny, blockedCells, gridCols, gridRows)) {
+    nx = player.x;
   }
 
-  const targetX = clamp(player.gridX + delta.x, 0, gridCols - 1);
-  const targetY = clamp(player.gridY + delta.y, 0, gridRows - 1);
-
-  const isDiagonal = delta.x !== 0 && delta.y !== 0;
-  if (isDiagonal && blockedCells) {
-    const sideAX = player.gridX + delta.x;
-    const sideAY = player.gridY;
-    const sideBX = player.gridX;
-    const sideBY = player.gridY + delta.y;
-    if (
-      blockedCells.has(toCellKey(sideAX, sideAY)) ||
-      blockedCells.has(toCellKey(sideBX, sideBY))
-    ) {
-      return {
-        moved: false,
-        gridX: player.gridX,
-        gridY: player.gridY,
-        reason: 'blocked_corner',
-      };
-    }
+  // Try Y axis
+  ny = player.y + dy;
+  if (isPositionBlocked(nx, ny, blockedCells, gridCols, gridRows)) {
+    ny = player.y;
   }
 
-  if (blockedCells && blockedCells.has(toCellKey(targetX, targetY))) {
-    return {
-      moved: false,
-      gridX: player.gridX,
-      gridY: player.gridY,
-      reason: 'blocked_cell',
-    };
-  }
+  // Clamp to map bounds
+  const minX = PLAYER_RADIUS;
+  const maxX = gridCols * GRID_SIZE - PLAYER_RADIUS;
+  const minY = PLAYER_RADIUS;
+  const maxY = gridRows * GRID_SIZE - PLAYER_RADIUS;
+  player.x = Math.max(minX, Math.min(maxX, nx));
+  player.y = Math.max(minY, Math.min(maxY, ny));
 
-  if (playersById && isBlockedByPlayer(targetX, targetY, playersById, player.id)) {
-    return {
-      moved: false,
-      gridX: player.gridX,
-      gridY: player.gridY,
-      reason: 'blocked_player',
-    };
-  }
+  // Keep derived grid cell in sync (used by action system)
+  player.gridX = Math.floor(player.x / GRID_SIZE);
+  player.gridY = Math.floor(player.y / GRID_SIZE);
+}
 
-  const moved = targetX !== player.gridX || targetY !== player.gridY;
-  if (moved) {
-    player.gridX = targetX;
-    player.gridY = targetY;
-  }
-
+// Convert a direction string to a velocity vector {vx, vy}
+function velocityFromDirection(dir) {
+  const vec = DIRECTION_VECS[dir];
+  if (!vec) return { vx: 0, vy: 0 };
+  const len = Math.hypot(vec.x, vec.y);
   return {
-    moved,
-    gridX: player.gridX,
-    gridY: player.gridY,
-    reason: moved ? 'ok' : 'same_cell',
+    vx: (vec.x / len) * PLAYER_SPEED,
+    vy: (vec.y / len) * PLAYER_SPEED,
   };
 }
 
-module.exports = {
-  DIRECTION_DELTAS,
-  applyPlayerMove,
-  toCellKey,
-};
+module.exports = { tickPlayer, velocityFromDirection, toCellKey, GRID_SIZE, PLAYER_SPEED };

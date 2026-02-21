@@ -184,6 +184,7 @@
           }
         }
 
+
         if (msg.type === 'action_update') {
           currentAction = msg.action;
           renderAction();
@@ -199,31 +200,33 @@
         ws.send(JSON.stringify({ type: 'move', dir }));
       }
 
+      function sendStop() {
+        if (ws.readyState !== 1) return;
+        ws.send(JSON.stringify({ type: 'stop' }));
+      }
+
       function sendInteract() {
         if (ws.readyState !== 1) return;
         ws.send(JSON.stringify({ type: 'interact' }));
       }
 
-      const SEND_INTERVAL_MS = 340;
       const DEAD_ZONE = 18;
       const MAX_RADIUS = 70;
       const SNAP_RADIUS = 64;
 
       let pointerId = null;
       let activeDir = null;
-      let moveInterval = null;
 
       function setStickPosition(x, y) {
         joystickStickEl.style.transform = `translate(${x}px, ${y}px)`;
       }
 
       function resetJoystick() {
-        activeDir = null;
-        setStickPosition(0, 0);
-        if (moveInterval) {
-          clearInterval(moveInterval);
-          moveInterval = null;
+        if (activeDir !== null) {
+          activeDir = null;
+          sendStop();
         }
+        setStickPosition(0, 0);
         joystickBaseEl.classList.remove('active');
       }
 
@@ -256,7 +259,10 @@
         }
 
         if (distance < DEAD_ZONE) {
-          activeDir = null;
+          if (activeDir !== null) {
+            activeDir = null;
+            sendStop();
+          }
           setStickPosition(0, 0);
           return;
         }
@@ -267,14 +273,11 @@
         const snappedY = Math.sin(snappedAngle) * SNAP_RADIUS;
         setStickPosition(snappedX, snappedY);
 
-        activeDir = vectorToDirection(dx, dy);
-      }
-
-      function startSendingLoop() {
-        if (moveInterval) return;
-        moveInterval = setInterval(() => {
-          if (activeDir) sendMove(activeDir);
-        }, SEND_INTERVAL_MS);
+        const newDir = vectorToDirection(dx, dy);
+        if (newDir !== activeDir) {
+          activeDir = newDir;
+          sendMove(activeDir);
+        }
       }
 
       joystickEl.addEventListener('pointerdown', (event) => {
@@ -283,8 +286,6 @@
         joystickBaseEl.classList.add('active');
         joystickEl.setPointerCapture(pointerId);
         updateFromPointer(event.clientX, event.clientY);
-        if (activeDir) sendMove(activeDir);
-        startSendingLoop();
       });
 
       joystickEl.addEventListener('pointermove', (event) => {

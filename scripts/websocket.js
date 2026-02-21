@@ -1,11 +1,10 @@
 const { WebSocketServer } = require('ws');
 const path = require('path');
 const { watchMaps } = require('./map-watcher');
-const { applyPlayerMove } = require('./movement');
+const { tickPlayer, velocityFromDirection, GRID_SIZE } = require('./movement');
 const { createActionManager } = require('./actions');
 const { loadMapNavigation } = require('./map-nav');
 
-const GRID_SIZE = 32;
 const CHARACTER_KEYS = ['red', 'blue', 'white', 'yellow'];
 const CHARACTER_COLORS = {
   red: '#e74c3c',
@@ -14,9 +13,11 @@ const CHARACTER_COLORS = {
   yellow: '#f1c40f',
 };
 
+const TICK_MS = 20; // server game loop interval (~20fps)
+
 function setupWebSocket(server) {
   const wss = new WebSocketServer({ server });
-  const players = {}; // id -> { id, name, character, color, gridX, gridY, ws }
+  const players = {}; // id -> { id, name, character, color, x, y, vx, vy, gridX, gridY, ws }
   let nextId = 1;
   const assetsDir = path.join(__dirname, '..', 'public', 'assets');
   const mapFilePath = path.join(assetsDir, 'basemap2.tmj');
@@ -74,12 +75,39 @@ function setupWebSocket(server) {
         name: p.name,
         character: p.character,
         color: p.color,
+        x: p.x,
+        y: p.y,
+        vx: p.vx,
+        vy: p.vy,
         gridX: p.gridX,
         gridY: p.gridY,
       })),
     };
     broadcast(state);
   }
+
+  // ── Game loop ──────────────────────────────────────────────────────────────
+  let lastTick = Date.now();
+
+  setInterval(() => {
+    const now = Date.now();
+    const dt = now - lastTick;
+    lastTick = now;
+
+    let anyMoving = false;
+    for (const player of Object.values(players)) {
+      if (player.vx !== 0 || player.vy !== 0) {
+        tickPlayer(player, dt, {
+          gridCols: nav.gridCols,
+          gridRows: nav.gridRows,
+          blockedCells: nav.blockedCells,
+        });
+        anyMoving = true;
+      }
+    }
+
+    if (anyMoving) broadcastState();
+  }, TICK_MS);
 
   wss.on('connection', (ws) => {
     const id = nextId++;
@@ -104,13 +132,19 @@ function setupWebSocket(server) {
         }
 
         const idx = CHARACTER_KEYS.indexOf(char);
+        const startGridX = 2 + idx * 3;
+        const startGridY = 2;
         player = {
           id,
           name: (msg.name || `Joueur ${id}`).slice(0, 16),
           character: char,
           color: CHARACTER_COLORS[char],
-          gridX: 2 + idx * 3,
-          gridY: 2,
+          x: startGridX * GRID_SIZE + GRID_SIZE / 2,
+          y: startGridY * GRID_SIZE + GRID_SIZE / 2,
+          vx: 0,
+          vy: 0,
+          gridX: startGridX,
+          gridY: startGridY,
           ws,
         };
         players[id] = player;
@@ -121,6 +155,8 @@ function setupWebSocket(server) {
           name: player.name,
           character: player.character,
           color: player.color,
+          x: player.x,
+          y: player.y,
           gridX: player.gridX,
           gridY: player.gridY,
           gridSize: GRID_SIZE,
@@ -143,13 +179,14 @@ function setupWebSocket(server) {
       if (!player) return; // ignore messages before join
 
       if (msg.type === 'move') {
-        const result = applyPlayerMove(player, msg.dir, {
-          gridCols: nav.gridCols,
-          gridRows: nav.gridRows,
-          playersById: players,
-          blockedCells: nav.blockedCells,
-        });
-        if (result.moved) broadcastState();
+        const { vx, vy } = velocityFromDirection(msg.dir);
+        player.vx = vx;
+        player.vy = vy;
+      }
+
+      if (msg.type === 'stop') {
+        player.vx = 0;
+        player.vy = 0;
       }
 
       if (msg.type === 'interact') {
