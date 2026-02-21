@@ -54,6 +54,7 @@
         <button class="action-btn" data-action="talk_bees" type="button">Parler aux abeilles</button>
         <button class="action-btn" data-action="harvest_cacao" type="button">Récolter le cacao</button>
         <button class="action-btn" data-action="burn_tree" type="button">Mettre le feu</button>
+        <button class="action-btn" data-action="pet_llama" type="button">Caresser le lama</button>
       </div>
       <div id="player-position">Position: —</div>
       <div id="player-water">Eau: Non</div>
@@ -132,6 +133,10 @@
     const playerSeedsEl = document.getElementById('player-seeds');
     const playerCacaoEl = document.getElementById('player-cacao');
 
+    actionBtnEls.forEach(button => {
+      button.dataset.baseLabel = button.textContent.trim();
+    });
+
     let myId = null;
     let activeAction = null;
     let actionsByKey = {};
@@ -146,12 +151,40 @@
       return actionsByKey[actionKey] || null;
     }
 
+    function setActionButtonContent(button, label, reason = null) {
+      button.textContent = '';
+
+      const labelEl = document.createElement('span');
+      labelEl.className = 'action-label';
+      labelEl.textContent = label;
+      button.appendChild(labelEl);
+
+      if (reason) {
+        const reasonEl = document.createElement('span');
+        reasonEl.className = 'action-reason';
+        reasonEl.textContent = reason;
+        button.appendChild(reasonEl);
+      }
+    }
+
     function renderActionButtons() {
       for (const button of actionBtnEls) {
         const actionKey = button.dataset.action;
         const action = getActionFromKey(actionKey);
+        const isVisible = Boolean(action && action.isVisible !== false);
+        button.style.display = isVisible ? '' : 'none';
+        const baseLabel = button.dataset.baseLabel || button.textContent.trim();
+        if (!isVisible) {
+          setActionButtonContent(button, baseLabel);
+          continue;
+        }
+
+        const blockedByContext = Boolean(action && !action.canInteract && action.blockedReason);
+        setActionButtonContent(button, baseLabel, blockedByContext ? action.blockedReason : null);
+        if (!isVisible) continue;
         const canUse = Boolean(action && action.canInteract && !activeAction);
         button.disabled = !canUse;
+        button.title = blockedByContext ? action.blockedReason : '';
       }
     }
 
@@ -159,15 +192,14 @@
       renderActionButtons();
 
       if (!activeAction) {
-        const blockedReason =
-          getActionFromKey('plant_seed')?.blockedReason
-          || getActionFromKey('fetch_seed')?.blockedReason
-          || getActionFromKey('fetch_water')?.blockedReason
-          || getActionFromKey('water_plants')?.blockedReason
-          || getActionFromKey('talk_bees')?.blockedReason
-          || getActionFromKey('harvest_cacao')?.blockedReason
-          || getActionFromKey('burn_tree')?.blockedReason;
-        actionRoleEl.textContent = blockedReason || 'Choisis une action';
+        const visibleActions = Object.values(actionsByKey).filter(action => (
+          action
+          && typeof action === 'object'
+          && action.key
+          && action.isVisible !== false
+        ));
+        const blockedReason = visibleActions.find(action => action.blockedReason)?.blockedReason;
+        actionRoleEl.textContent = blockedReason || (visibleActions.length > 0 ? 'Choisis une action' : 'Aucune action ici');
         actionTimerEl.textContent = '—';
         actionProgressEl.classList.remove('visible');
         actionProgressFillEl.style.width = '0%';

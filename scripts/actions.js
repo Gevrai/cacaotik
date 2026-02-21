@@ -41,6 +41,12 @@ const ACTION_LIBRARY = {
     targetName: 'Arbre récolté',
     durationMs: 3000,
   },
+  pet_llama: {
+    key: 'pet_llama',
+    title: 'Caresser le lama',
+    targetName: 'Lama',
+    durationMs: 3000,
+  },
 };
 
 const BROWN_ZONE = {
@@ -77,6 +83,9 @@ function createActionManager(options = {}) {
     well: stations.well || { x: 15, y: 2 },
     hive: stations.hive || { x: 4, y: 18 },
     house: stations.house || { x: 2, y: 2 },
+    llamas: Array.isArray(stations.llamas) && stations.llamas.length > 0
+      ? stations.llamas
+      : [{ x: 23, y: 15 }, { x: 23, y: 16 }],
   };
   const brownZone = stations.brownZone || BROWN_ZONE;
 
@@ -180,6 +189,15 @@ function createActionManager(options = {}) {
     return nearest;
   }
 
+  function getNearestLlamaForPlayer(player) {
+    for (const llama of stationByKey.llamas) {
+      if (isAdjacent8(player, llama.x, llama.y) || (player.gridX === llama.x && player.gridY === llama.y)) {
+        return llama;
+      }
+    }
+    return null;
+  }
+
   function toAction(def, extras = {}) {
     return {
       id: extras.id || null,
@@ -193,6 +211,7 @@ function createActionManager(options = {}) {
       actorId: extras.actorId || null,
       startedAt: extras.startedAt || null,
       canInteract: extras.canInteract !== false,
+      isVisible: extras.isVisible !== false,
       blockedReason: extras.blockedReason || null,
     };
   }
@@ -208,6 +227,7 @@ function createActionManager(options = {}) {
       actorId: playerId,
       gridX: well.x,
       gridY: well.y,
+      isVisible: isNearWell,
       canInteract,
       blockedReason: !isNearWell
         ? 'Approche-toi du puits.'
@@ -226,6 +246,7 @@ function createActionManager(options = {}) {
       actorId: playerId,
       gridX: player.gridX,
       gridY: player.gridY,
+      isVisible: inBrownZone,
       canInteract,
       blockedReason: !inBrownZone
         ? 'Entre dans la zone marron.'
@@ -243,6 +264,7 @@ function createActionManager(options = {}) {
       actorId: playerId,
       gridX: house.x,
       gridY: house.y,
+      isVisible: isNearHouse,
       canInteract: isNearHouse,
       blockedReason: isNearHouse ? null : 'Approche-toi de la maison.',
     });
@@ -262,6 +284,7 @@ function createActionManager(options = {}) {
       gridY: targetPlant ? targetPlant.gridY : null,
       title: isExtinguish ? 'Éteindre le feu' : actionLibrary.water_plants.title,
       targetName: isExtinguish ? 'Arbre en feu' : actionLibrary.water_plants.targetName,
+      isVisible: Boolean(targetPlant),
       canInteract,
       blockedReason: !targetPlant
         ? 'Approche-toi d’une plante à arroser ou d’un arbre en feu.'
@@ -280,6 +303,7 @@ function createActionManager(options = {}) {
       gridX: targetPlant ? targetPlant.gridX : null,
       gridY: targetPlant ? targetPlant.gridY : null,
       targetName: 'Ruche',
+      isVisible: isNearHive,
       canInteract,
       blockedReason: !isNearHive
         ? 'Approche-toi de la ruche.'
@@ -295,6 +319,7 @@ function createActionManager(options = {}) {
       actorId: playerId,
       gridX: targetPlant ? targetPlant.gridX : null,
       gridY: targetPlant ? targetPlant.gridY : null,
+      isVisible: Boolean(targetPlant),
       canInteract,
       blockedReason: targetPlant ? null : 'Aucun cacaotier prêt à récolter à proximité.',
     });
@@ -308,8 +333,23 @@ function createActionManager(options = {}) {
       actorId: playerId,
       gridX: targetPlant ? targetPlant.gridX : null,
       gridY: targetPlant ? targetPlant.gridY : null,
+      isVisible: Boolean(targetPlant),
       canInteract,
       blockedReason: targetPlant ? null : 'Récolte d’abord un cacaotier pour pouvoir y mettre le feu.',
+    });
+  }
+
+  function getPetLlamaAction(playerId, player) {
+    const llama = getNearestLlamaForPlayer(player);
+    const canInteract = Boolean(llama);
+
+    return toAction(actionLibrary.pet_llama, {
+      actorId: playerId,
+      gridX: llama ? llama.x : null,
+      gridY: llama ? llama.y : null,
+      isVisible: Boolean(llama),
+      canInteract,
+      blockedReason: llama ? null : 'Approche-toi du lama.',
     });
   }
 
@@ -327,6 +367,7 @@ function createActionManager(options = {}) {
       talk_bees: getTalkBeesAction(playerId, player),
       harvest_cacao: getHarvestCacaoAction(playerId, player),
       burn_tree: getBurnTreeAction(playerId, player),
+      pet_llama: getPetLlamaAction(playerId, player),
       activeAction,
     };
   }
@@ -389,6 +430,14 @@ function createActionManager(options = {}) {
     const blocked = new Set();
     for (const plant of plants) {
       blocked.add(`${plant.gridX},${plant.gridY}`);
+    }
+    return blocked;
+  }
+
+  function getBlockedLlamaCellKeys() {
+    const blocked = new Set();
+    for (const llama of stationByKey.llamas) {
+      blocked.add(`${llama.x},${llama.y}`);
     }
     return blocked;
   }
@@ -541,6 +590,14 @@ function createActionManager(options = {}) {
       );
     }
 
+    if (action.key === 'pet_llama') {
+      return stationByKey.llamas.some(llama => (
+        llama.x === action.gridX
+        && llama.y === action.gridY
+        && (isAdjacent8(player, llama.x, llama.y) || (player.gridX === llama.x && player.gridY === llama.y))
+      ));
+    }
+
     return true;
   }
 
@@ -635,6 +692,7 @@ function createActionManager(options = {}) {
       if (actionToStart.key === 'fetch_seed') successMessage = 'Tu récupères une graine.';
       if (actionToStart.key === 'talk_bees') successMessage = 'Les abeilles vont butiner puis revenir à la ruche.';
       if (actionToStart.key === 'burn_tree') successMessage = 'Le feu prend sur l’arbre.';
+      if (actionToStart.key === 'pet_llama') successMessage = 'Le lama adore les caresses.';
 
       finishAction(
         playerId,
@@ -649,6 +707,7 @@ function createActionManager(options = {}) {
   return {
     getPublicActionState,
     getBlockedPlantCellKeys,
+    getBlockedLlamaCellKeys,
     handleRosterChange,
     tryInteract,
   };

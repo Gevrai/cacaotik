@@ -96,6 +96,7 @@ function setupWebSocket(server) {
       well: { x: 15, y: 2 },
       plants: { x: 8, y: 4 },
       harvest: { x: 9, y: 4 },
+      llamas: [{ x: 23, y: 15 }, { x: 23, y: 16 }],
     },
     onActionChange: (actionState) => {
       broadcast({
@@ -140,11 +141,13 @@ function setupWebSocket(server) {
     lastTick = now;
 
     const dynamicPlantBlocked = actionManager.getBlockedPlantCellKeys();
+    const dynamicLlamaBlocked = actionManager.getBlockedLlamaCellKeys();
 
     let anyMoving = false;
     for (const player of Object.values(players)) {
       const hardBlocked = new Set(nav.blockedCells);
       for (const cell of dynamicPlantBlocked) hardBlocked.add(cell);
+      for (const cell of dynamicLlamaBlocked) hardBlocked.add(cell);
 
       const currentGridX = Math.floor(player.x / GRID_SIZE);
       const currentGridY = Math.floor(player.y / GRID_SIZE);
@@ -164,6 +167,9 @@ function setupWebSocket(server) {
           if (cell !== `${player.gridX},${player.gridY}`) {
             mergedBlocked.add(cell);
           }
+        }
+        for (const cell of dynamicLlamaBlocked) {
+          mergedBlocked.add(cell);
         }
 
         tickPlayer(player, dt, {

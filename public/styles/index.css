@@ -172,6 +172,21 @@ body {
   font-size: 18px;
   font-family: monospace;
   padding: 10px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.action-label {
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.action-reason {
+  font-size: 12px;
+  line-height: 1.2;
+  opacity: 0.9;
 }
 
 .action-btn:disabled {
