@@ -68,6 +68,8 @@
         this.load.spritesheet('char_blue',   `/assets/characters/players/blue.png?t=${t}`,   { frameWidth: 24, frameHeight: 24 });
         this.load.spritesheet('char_yellow', `/assets/characters/players/yellow.png?t=${t}`, { frameWidth: 24, frameHeight: 24 });
         this.load.spritesheet('char_white',  `/assets/characters/players/white.png?t=${t}`,  { frameWidth: 24, frameHeight: 24 });
+        this.load.image('oie0', `/assets/characters/oie/oie0.png?t=${t}`);
+        this.load.image('oie1', `/assets/characters/oie/oie1.png?t=${t}`);
       }
 
       create() {
@@ -80,6 +82,7 @@
           this._defineCharAnims();
           this._setupPlayers();
           this._setupBees();
+          this._setupGeese();
           return;
         }
 
@@ -130,6 +133,7 @@
           this._defineCharAnims();
           this._setupPlayers();
           this._setupBees();
+          this._setupGeese();
           return;
         }
 
@@ -142,6 +146,7 @@
         this._defineCharAnims();
         this._setupPlayers();
         this._setupBees();
+        this._setupGeese();
       }
 
       fitMapToViewport(mapWidth, mapHeight) {
@@ -210,15 +215,15 @@
           const g = this.add.graphics();
           // Body
           g.fillStyle(0xf5c518, 1);
-          g.fillEllipse(0, 0, 4, 3);
+          g.fillEllipse(0, 0, 2.4, 1.8);
           // Stripes
           g.fillStyle(0x3a2800, 1);
-          g.fillRect(-1, -1, 1, 2);
-          g.fillRect(1, -1, 1, 2);
+          g.fillRect(-0.6, -0.6, 0.6, 1.2);
+          g.fillRect(0.6, -0.6, 0.6, 1.2);
           // Wings
           g.fillStyle(0xcceeff, 0.6);
-          g.fillEllipse(-2, -2, 3, 2);
-          g.fillEllipse(2, -2, 3, 2);
+          g.fillEllipse(-1.2, -1.2, 1.8, 1.2);
+          g.fillEllipse(1.2, -1.2, 1.8, 1.2);
           g.setDepth(10);
 
           const phase = (i / BEE_COUNT) * Math.PI * 2;
@@ -235,6 +240,38 @@
         this._hiveX = HIVE_X;
         this._hiveY = HIVE_Y;
         this._beeTime = 0;
+      }
+
+      _setupGeese() {
+        const MAP_W = 30 * 16; // 480px display width
+        const MAP_H = 20 * 16; // 320px display height
+        const MARGIN = 24;
+        const GOOSE_SPEED = 12; // px/s
+        const GOOSE_COUNT = 3;
+
+        this._geese = [];
+        for (let i = 0; i < GOOSE_COUNT; i++) {
+          const x = MARGIN + Math.random() * (MAP_W - MARGIN * 2);
+          const y = MARGIN + Math.random() * (MAP_H - MARGIN * 2);
+          const img = this.add.image(x, y, 'oie0');
+          img.setScale(16 / img.width); // scale to roughly 1 tile
+          img.setDepth(5);
+
+          // Pick a random direction angle
+          const angle = Math.random() * Math.PI * 2;
+          this._geese.push({
+            img,
+            vx: Math.cos(angle) * GOOSE_SPEED,
+            vy: Math.sin(angle) * GOOSE_SPEED,
+            frameTimer: 0,
+            frameCurrent: 0,
+            dirTimer: 1.5 + Math.random() * 2.5,
+          });
+        }
+        this._gooseMapW = MAP_W;
+        this._gooseMapH = MAP_H;
+        this._gooseMargin = MARGIN;
+        this._gooseSpeed = GOOSE_SPEED;
       }
 
       _setupPlayers() {
@@ -260,6 +297,46 @@
             b.g.setScale(Math.cos(angle + 0.01) - Math.cos(angle) < 0 ? -1 : 1, 1);
           }
         }
+        // Animate geese wandering around the map
+        if (this._geese) {
+          const dt_s = delta / 1000;
+          const MARGIN = this._gooseMargin;
+          const SPEED = this._gooseSpeed;
+          const MAP_W = this._gooseMapW;
+          const MAP_H = this._gooseMapH;
+          for (const g of this._geese) {
+            // Move
+            g.img.x += g.vx * dt_s;
+            g.img.y += g.vy * dt_s;
+
+            // Bounce off map edges
+            if (g.img.x < MARGIN)        { g.img.x = MARGIN;        g.vx =  Math.abs(g.vx); }
+            if (g.img.x > MAP_W - MARGIN) { g.img.x = MAP_W - MARGIN; g.vx = -Math.abs(g.vx); }
+            if (g.img.y < MARGIN)        { g.img.y = MARGIN;        g.vy =  Math.abs(g.vy); }
+            if (g.img.y > MAP_H - MARGIN) { g.img.y = MAP_H - MARGIN; g.vy = -Math.abs(g.vy); }
+
+            // Random direction change
+            g.dirTimer -= dt_s;
+            if (g.dirTimer <= 0) {
+              const angle = Math.random() * Math.PI * 2;
+              g.vx = Math.cos(angle) * SPEED;
+              g.vy = Math.sin(angle) * SPEED;
+              g.dirTimer = 1.5 + Math.random() * 2.5;
+            }
+
+            // Flip based on horizontal direction
+            g.img.setFlipX(g.vx > 0);
+
+            // Walk animation: alternate frame every 0.2s
+            g.frameTimer += dt_s;
+            if (g.frameTimer >= 0.2) {
+              g.frameTimer = 0;
+              g.frameCurrent = 1 - g.frameCurrent;
+              g.img.setTexture(g.frameCurrent === 0 ? 'oie0' : 'oie1');
+            }
+          }
+        }
+
         const DISPLAY_GRID = 16; // display tile size
         const SCALE = DISPLAY_GRID / 32; // server uses 32px grid
         const dt = delta / 1000; // seconds
