@@ -1,55 +1,5 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #1a1a2e; overflow: hidden; }
-
-#boot-overlay {
-	position: fixed;
-	inset: 0;
-	z-index: 200;
-	display: grid;
-	place-items: center;
-	gap: 18px;
-	padding: 24px;
-	background: #090915;
-}
-
-#boot-image {
-	height: calc(100vh - 64px);
-	max-height: calc(100vh - 64px);
-	width: auto;
-	max-width: min(96vw, 1800px);
-	object-fit: contain;
-	border: 2px solid #2a2a4a;
-	border-radius: 8px;
-	box-shadow: 0 0 0 1px #111122;
-}
-
-#boot-progress {
-	width: min(720px, 92vw);
-	height: 16px;
-	border: 2px solid #45457a;
-	border-radius: 999px;
-	background: #111126;
-	overflow: hidden;
-}
-
-#boot-progress-fill {
-	width: 0%;
-	height: 100%;
-	background: linear-gradient(90deg, #4a4a8a 0%, #8e7bd8 100%);
-	transition: width 80ms linear;
-}
-
-#boot-overlay.hidden {
-	display: none;
-}
-
-body.booting #game,
-body.booting #status,
-body.booting #tasks-gui,
-body.booting #connect-panel {
-	display: none;
-}
-
 #game { position: fixed; inset: 0; }
 canvas { display: block; }
 #tasks-gui {
