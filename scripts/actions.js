@@ -1,42 +1,44 @@
 const ACTION_LIBRARY = {
+  plant_seed: {
+    key: 'plant_seed',
+    title: 'Planter une graine',
+    description: 'Plante une graine au potager.',
+    targetName: 'Zone de semis',
+    stationKey: 'seed',
+    durationMs: 3000,
+  },
   fetch_water: {
     key: 'fetch_water',
-    title: 'Aller chercher de l’eau',
-    description: 'Place-toi à côté du puits puis interagis.',
+    title: 'Prendre de l’eau',
+    description: 'Prends de l’eau au puits.',
     targetName: 'Puits',
-    gridX: 18,
-    gridY: 6,
-    durationMs: 2500,
-    requiresWater: false,
-    grantsWater: true,
+    stationKey: 'well',
+    durationMs: 3000,
   },
   water_plants: {
     key: 'water_plants',
-    title: 'Arroser les plantes',
-    description: 'Arrose le potager (nécessite d’avoir pris de l’eau).',
+    title: 'Arroser la plante',
+    description: 'Arrose la plante au potager.',
     targetName: 'Potager',
-    gridX: 8,
-    gridY: 4,
+    stationKey: 'plants',
     durationMs: 3000,
-    requiresWater: true,
-    grantsWater: false,
+  },
+  harvest_plant: {
+    key: 'harvest_plant',
+    title: 'Récolter la plante',
+    description: 'Récolte la plante prête.',
+    targetName: 'Zone de récolte',
+    stationKey: 'harvest',
+    durationMs: 3000,
   },
 };
 
-function randomItem(items) {
-  return items[Math.floor(Math.random() * items.length)];
-}
-
-function pickRequesterAndActor(playerIds) {
-  const requesterId = randomItem(playerIds);
-  const actorPool = playerIds.filter(id => id !== requesterId);
-  const actorId = randomItem(actorPool);
-  return { requesterId, actorId };
-}
-
-function isAdjacentOrSame(player, x, y) {
-  return Math.abs(player.gridX - x) <= 1 && Math.abs(player.gridY - y) <= 1;
-}
+const ACTION_ORDER = [
+  ACTION_LIBRARY.plant_seed,
+  ACTION_LIBRARY.fetch_water,
+  ACTION_LIBRARY.water_plants,
+  ACTION_LIBRARY.harvest_plant,
+];
 
 function isAdjacent8(player, x, y) {
   const dx = Math.abs(player.gridX - x);
@@ -47,82 +49,33 @@ function isAdjacent8(player, x, y) {
 function createActionManager(options = {}) {
   const {
     actionLibrary = ACTION_LIBRARY,
-    minPlayers = 2,
     stations = {},
     onActionChange = () => {},
     onActionResult = () => {},
   } = options;
 
-  const wellStation = stations.well || { x: actionLibrary.fetch_water.gridX, y: actionLibrary.fetch_water.gridY };
-  const plantsStation = stations.plants || { x: actionLibrary.water_plants.gridX, y: actionLibrary.water_plants.gridY };
+  const stationByKey = {
+    seed: stations.seed || { x: 7, y: 4 },
+    well: stations.well || { x: 15, y: 2 },
+    plants: stations.plants || { x: 8, y: 4 },
+    harvest: stations.harvest || { x: 9, y: 4 },
+  };
 
-  let currentAction = null;
+  const inProgressByPlayer = {};
+  const completionTimeoutByPlayer = {};
+  let playersSnapshot = {};
   let nextActionId = 1;
-  let completionTimeout = null;
-  const hasWaterByPlayer = {};
 
-  function clearCompletionTimer() {
-    if (completionTimeout) {
-      clearTimeout(completionTimeout);
-      completionTimeout = null;
+  function clearCompletionTimer(playerId) {
+    if (completionTimeoutByPlayer[playerId]) {
+      clearTimeout(completionTimeoutByPlayer[playerId]);
+      delete completionTimeoutByPlayer[playerId];
     }
   }
 
-  function getPublicActionState() {
-    if (!currentAction) return null;
+  function toPublicAction(def, station, extras = {}) {
     return {
-      id: currentAction.id,
-      key: currentAction.key,
-      title: currentAction.title,
-      description: currentAction.description,
-      targetName: currentAction.targetName,
-      gridX: currentAction.gridX,
-      gridY: currentAction.gridY,
-      durationMs: currentAction.durationMs,
-      status: currentAction.status,
-      requesterId: currentAction.requesterId,
-      actorId: currentAction.actorId,
-      startedAt: currentAction.startedAt,
-    };
-  }
-
-  function emitActionChange() {
-    onActionChange(getPublicActionState());
-  }
-
-  function spawnAction(playersById) {
-    const playerIds = Object.keys(playersById).map(Number);
-    if (playerIds.length < minPlayers) {
-      if (currentAction) {
-        clearCompletionTimer();
-        currentAction = null;
-        emitActionChange();
-      }
-      return;
-    }
-    if (currentAction) return;
-
-    const playersWithWater = playerIds.filter(id => Boolean(hasWaterByPlayer[id]));
-    const canWater = playersWithWater.length > 0;
-
-    let actorId;
-    let requesterId;
-
-    if (canWater) {
-      actorId = randomItem(playersWithWater);
-      const requesterPool = playerIds.filter(id => id !== actorId);
-      requesterId = randomItem(requesterPool);
-    } else {
-      const picked = pickRequesterAndActor(playerIds);
-      requesterId = picked.requesterId;
-      actorId = picked.actorId;
-    }
-
-    const def = canWater ? actionLibrary.water_plants : actionLibrary.fetch_water;
-    const station = canWater ? plantsStation : wellStation;
-
-    currentAction = {
-      id: nextActionId++,
+      id: extras.id || null,
       key: def.key,
       title: def.title,
       description: def.description,
@@ -130,125 +83,124 @@ function createActionManager(options = {}) {
       gridX: station.x,
       gridY: station.y,
       durationMs: def.durationMs,
-      requiresWater: def.requiresWater,
-      grantsWater: def.grantsWater,
-      requesterId,
-      actorId,
-      status: 'pending',
-      startedAt: null,
+      status: extras.status || 'pending',
+      actorId: extras.actorId || null,
+      startedAt: extras.startedAt || null,
     };
-
-    emitActionChange();
   }
 
-  function finishAction(playersById, success, message) {
-    const finishedAction = currentAction;
+  function getPendingActionForPlayer(playerId, playersById) {
+    const player = playersById[playerId];
+    if (!player) return null;
 
-    if (success && finishedAction) {
-      if (finishedAction.key === 'fetch_water') {
-        hasWaterByPlayer[finishedAction.actorId] = true;
-      }
-      if (finishedAction.key === 'water_plants') {
-        hasWaterByPlayer[finishedAction.actorId] = false;
+    for (const def of ACTION_ORDER) {
+      const station = stationByKey[def.stationKey];
+      if (!station) continue;
+      if (isAdjacent8(player, station.x, station.y)) {
+        return toPublicAction(def, station, { actorId: playerId, status: 'pending' });
       }
     }
 
-    clearCompletionTimer();
-    currentAction = null;
+    return null;
+  }
+
+  function getPublicActionState(playersById = playersSnapshot) {
+    const actionsByPlayer = {};
+    const inProgressPublicByPlayer = {};
+
+    const playerIds = Object.keys(playersById).map(Number);
+
+    for (const playerId of playerIds) {
+      const inProgress = inProgressByPlayer[playerId];
+      if (inProgress) {
+        actionsByPlayer[playerId] = inProgress;
+        inProgressPublicByPlayer[playerId] = inProgress;
+      } else {
+        actionsByPlayer[playerId] = getPendingActionForPlayer(playerId, playersById);
+      }
+    }
+
+    return {
+      actionsByPlayer,
+      inProgressByPlayer: inProgressPublicByPlayer,
+    };
+  }
+
+  function emitActionChange(playersById = playersSnapshot) {
+    onActionChange(getPublicActionState(playersById));
+  }
+
+  function finishAction(playerId, playersById, success, message, actionId) {
+    clearCompletionTimer(playerId);
+    delete inProgressByPlayer[playerId];
+
     onActionResult({
-      actionId: finishedAction ? finishedAction.id : null,
+      actionId: actionId || null,
       success,
       message,
+      playerId,
     });
-    emitActionChange();
-    spawnAction(playersById);
+
+    emitActionChange(playersById);
   }
 
   function handleRosterChange(playersById) {
-    for (const playerId of Object.keys(hasWaterByPlayer)) {
+    playersSnapshot = playersById;
+
+    for (const playerId of Object.keys(inProgressByPlayer)) {
       if (!playersById[playerId]) {
-        delete hasWaterByPlayer[playerId];
+        clearCompletionTimer(playerId);
+        delete inProgressByPlayer[playerId];
       }
     }
 
-    if (!currentAction) {
-      spawnAction(playersById);
-      return;
-    }
-
-    const actorStillConnected = Boolean(playersById[currentAction.actorId]);
-    const requesterStillConnected = Boolean(playersById[currentAction.requesterId]);
-    if (!actorStillConnected || !requesterStillConnected) {
-      finishAction(playersById, false, 'Action annulée: joueur manquant.');
-      return;
-    }
-
-    emitActionChange();
+    emitActionChange(playersById);
   }
 
   function tryInteract(playerId, playersById) {
-    if (!currentAction) {
+    playersSnapshot = playersById;
+
+    if (inProgressByPlayer[playerId]) {
+      onActionResult({
+        actionId: inProgressByPlayer[playerId].id,
+        success: false,
+        message: 'Action déjà en cours…',
+        playerId,
+      });
+      return;
+    }
+
+    const pendingAction = getPendingActionForPlayer(playerId, playersById);
+    if (!pendingAction) {
       onActionResult({
         actionId: null,
         success: false,
-        message: 'Aucune action en cours.',
+        message: 'Aucune action disponible ici.',
+        playerId,
       });
       return;
     }
 
-    if (currentAction.status !== 'pending') {
-      onActionResult({
-        actionId: currentAction.id,
-        success: false,
-        message: 'Action déjà en cours…',
-      });
-      return;
-    }
+    const actionToStart = {
+      ...pendingAction,
+      id: nextActionId++,
+      status: 'in_progress',
+      startedAt: Date.now(),
+      actorId: playerId,
+    };
 
-    if (playerId !== currentAction.actorId) {
-      onActionResult({
-        actionId: currentAction.id,
-        success: false,
-        message: `Seul le joueur ${currentAction.actorId} peut faire cette action.`,
-      });
-      return;
-    }
+    inProgressByPlayer[playerId] = actionToStart;
+    emitActionChange(playersById);
 
-    const actor = playersById[playerId];
-    if (!actor) return;
-
-    if (currentAction.requiresWater && !hasWaterByPlayer[playerId]) {
-      onActionResult({
-        actionId: currentAction.id,
-        success: false,
-        message: 'Tu dois d’abord aller chercher de l’eau au puits.',
-      });
-      return;
-    }
-
-    const closeEnough = currentAction.key === 'fetch_water'
-      ? isAdjacent8(actor, currentAction.gridX, currentAction.gridY)
-      : isAdjacentOrSame(actor, currentAction.gridX, currentAction.gridY);
-    if (!closeEnough) {
-      onActionResult({
-        actionId: currentAction.id,
-        success: false,
-        message: currentAction.key === 'fetch_water'
-          ? `Place-toi sur une des 8 cases autour du ${currentAction.targetName} (${currentAction.gridX}, ${currentAction.gridY}) puis interagis.`
-          : `Approche-toi de ${currentAction.targetName} (${currentAction.gridX}, ${currentAction.gridY}) puis interagis.`,
-      });
-      return;
-    }
-
-    currentAction.status = 'in_progress';
-    currentAction.startedAt = Date.now();
-    emitActionChange();
-
-    const finishedTitle = currentAction.title;
-
-    completionTimeout = setTimeout(() => {
-      finishAction(playersById, true, `Action réussie: ${finishedTitle}.`);
-    }, currentAction.durationMs);
+    completionTimeoutByPlayer[playerId] = setTimeout(() => {
+      finishAction(
+        playerId,
+        playersById,
+        true,
+        `Action réussie: ${actionToStart.title}.`,
+        actionToStart.id,
+      );
+    }, actionToStart.durationMs);
   }
 
   return {

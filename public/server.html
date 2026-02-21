@@ -7,6 +7,16 @@
 </head>
 <body>
   <div id="status">connecting…</div>
+  <div id="tasks-gui">
+    <div id="tasks-title">:GUI:</div>
+    <ul id="tasks-list">
+      <li>planter une graine</li>
+      <li>chercher de l'eau</li>
+      <li>arroser la plante</li>
+      <li>recolter la plante</li>
+      <li>...</li>
+    </ul>
+  </div>
   <div id="game"></div>
   <div id="connect-panel">
     <img id="connect-qr" alt="QR code to connect controllers" />
@@ -32,6 +42,7 @@
   <script>
     // ── Shared state (updated by WebSocket, read by Phaser scene) ──────────
     let players = {};
+    let inProgressByPlayer = {};
     let mapCacheBust = Date.now();
     const statusEl = document.getElementById('status');
 
@@ -188,6 +199,7 @@
       _setupPlayers() {
         this._sprites = {};  // id → Phaser.GameObjects.Sprite
         this._local = {};    // id → { x, y } — client-extrapolated pixel positions (display scale)
+        this._progressBars = {}; // id -> { bg, fill }
       }
 
       update(time, delta) {
@@ -214,12 +226,17 @@
             spr.play(`idle_${colorName}`);
             this._sprites[p.id] = spr;
             this._local[p.id] = { x: sx, y: sy };
+
+            const bg = this.add.rectangle(sx, sy - 12, DISPLAY_GRID + 2, 5, 0x1f1f33);
+            bg.setVisible(false);
+            const fill = this.add.rectangle(sx - DISPLAY_GRID / 2, sy - 12, 0, 3, 0x4a4a8a);
+            fill.setOrigin(0, 0.5);
+            fill.setVisible(false);
+            this._progressBars[p.id] = { bg, fill };
           }
 
           const spr = this._sprites[p.id];
           const loc = this._local[p.id];
-
-          const prevX = loc.x;
 
           // Extrapolate using server velocity
           loc.x += (p.vx || 0) * SCALE * dt;
@@ -239,6 +256,24 @@
           if (spr.anims.currentAnim?.key !== targetAnim) spr.play(targetAnim);
 
           spr.setPosition(loc.x, loc.y);
+
+          const bar = this._progressBars[p.id];
+          if (bar) {
+            const progressAction = inProgressByPlayer[p.id] || inProgressByPlayer[String(p.id)];
+            if (progressAction && progressAction.status === 'in_progress' && progressAction.startedAt) {
+              const elapsed = Date.now() - progressAction.startedAt;
+              const ratio = Math.max(0, Math.min(1, elapsed / progressAction.durationMs));
+              const barWidth = DISPLAY_GRID + 2;
+              bar.bg.setPosition(loc.x, loc.y - 14);
+              bar.bg.setVisible(true);
+              bar.fill.width = barWidth * ratio;
+              bar.fill.setPosition(loc.x - barWidth / 2, loc.y - 14);
+              bar.fill.setVisible(true);
+            } else {
+              bar.bg.setVisible(false);
+              bar.fill.setVisible(false);
+            }
+          }
         }
 
         // Remove sprites for disconnected players
@@ -247,6 +282,11 @@
             this._sprites[id].destroy();
             delete this._sprites[id];
             delete this._local[id];
+            if (this._progressBars[id]) {
+              this._progressBars[id].bg.destroy();
+              this._progressBars[id].fill.destroy();
+              delete this._progressBars[id];
+            }
           }
         }
       }
@@ -297,6 +337,10 @@
         players = {};
         for (const p of msg.players) players[p.id] = p;
         statusEl.textContent = `players: ${msg.players.length}`;
+      }
+
+      if (msg.type === 'action_update') {
+        inProgressByPlayer = msg.inProgressByPlayer || {};
       }
 
       if (msg.type === 'reload_map') {

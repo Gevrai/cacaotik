@@ -49,13 +49,15 @@ function setupWebSocket(server) {
 
   const actionManager = createActionManager({
     stations: {
+      seed: { x: 7, y: 4 },
       well: { x: 15, y: 2 },
       plants: { x: 8, y: 4 },
+      harvest: { x: 9, y: 4 },
     },
-    onActionChange: (action) => {
+    onActionChange: (actionState) => {
       broadcast({
         type: 'action_update',
-        action,
+        ...actionState,
         serverTime: Date.now(),
       });
     },
@@ -106,7 +108,10 @@ function setupWebSocket(server) {
       }
     }
 
-    if (anyMoving) broadcastState();
+    if (anyMoving) {
+      broadcastState();
+      actionManager.handleRosterChange(players);
+    }
   }, TICK_MS);
 
   wss.on('connection', (ws) => {
@@ -166,7 +171,7 @@ function setupWebSocket(server) {
 
         ws.send(JSON.stringify({
           type: 'action_update',
-          action: actionManager.getPublicActionState(),
+          ...actionManager.getPublicActionState(players),
           serverTime: Date.now(),
         }));
 

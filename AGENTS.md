@@ -35,11 +35,10 @@ Cacaotique is a chaotic co-op farming/cooking game for a 6h game jam.
     └── Applies move directions with grid bounds + collision checks
 
 [Actions module — /scripts/actions.js]
-    ├── Stores action library (fetch water, water plants)
-    ├── Assigns requester player (A) + actor player (B)
-    ├── Validates interact at target position / proximity
-    ├── Tracks per-player water prerequisite state
-    └── Runs action completion timer and rotates to next task
+    ├── Stores contextual station actions (seed/well/water/harvest)
+    ├── Detects available action per player from map proximity
+    ├── Starts per-player action progress on interact
+    └── Broadcasts per-player pending/in-progress action state
 
 [Map watcher — /scripts/map-watcher.js]
     └── Watches /public/assets/ for .tmj changes, calls back with filename
@@ -100,7 +99,7 @@ All messages are JSON.
 | `join` | `name: string, character: "red"\|"blue"\|"white"\|"yellow"` | First message after connect; registers the player with name + preferred character |
 | `move` | `dir: "up"\|"down"\|"left"\|"right"\|"up-left"\|"up-right"\|"down-left"\|"down-right"` | Set player velocity in given direction (sent once on direction change) |
 | `stop` | _(none)_ | Zero player velocity (sent on joystick release) |
-| `interact` | _(none)_ | Attempt interaction for current assigned action |
+| `interact` | _(none)_ | Attempt interaction for the player action available at current position |
 
 ### Server → Client (broadcast to all)
 
@@ -108,8 +107,8 @@ All messages are JSON.
 |--------|--------|-------------|
 | `init` | `id, name, character, color, x, y, gridX, gridY, gridSize, gridCols, gridRows` | Sent once after `join` to the joining client with assigned character/color |
 | `state` | `players: [{id, name, character, color, x, y, gridX, gridY}]` | Full player state, broadcast by game loop (~20fps) while any player is moving |
-| `action_update` | `action: {id,key,title,description,targetName,gridX,gridY,durationMs,status,requesterId,actorId,startedAt}\|null, serverTime` | Current cooperative action state (or null if unavailable) |
-| `action_result` | `actionId, success, message` | Result/feedback after interact attempts or completion |
+| `action_update` | `actionsByPlayer: { [playerId]: {id,key,title,description,targetName,gridX,gridY,durationMs,status,actorId,startedAt}\|null }, inProgressByPlayer: { [playerId]: action }, serverTime` | Contextual action state for each player + active progress actions |
+| `action_result` | `actionId, success, message, playerId` | Result/feedback after interact attempts or completion (includes concerned player) |
 | `reload_map` | `file: string` | Sent when a .tmj file changes; display restarts its Phaser scene |
 
 ---
@@ -128,19 +127,21 @@ All messages are JSON.
 
 - Game state lives entirely on the server (`scripts/websocket.js`). Clients are dumb input/output terminals.
 - Movement/collision rules live in `scripts/movement.js` and are applied server-side.
-- Action assignment/timer/validation live in `scripts/actions.js` and are applied server-side.
+- Contextual action detection/timer/validation live in `scripts/actions.js` and are applied server-side.
 - The display (`server.html`) only renders what it receives — no local simulation.
 - Players choose a name and character (red/blue/white/yellow) in the lobby before connecting. Server honours the preference if the character is free, otherwise assigns the first available one.
 - Max 4 players (limited by color array).
 
 ## Action Flow (Current)
 
-- Cooperative loop currently has 2 actions only:
-    1) `fetch_water` at the well
-    2) `water_plants` at the potager
-- `fetch_water` requires the actor to be adjacent to the well.
-- `water_plants` requires the actor to have completed `fetch_water` first.
-- Water state is tracked server-side per player.
+- Actions are contextual (no prerequisites):
+    1) `plant_seed`
+    2) `fetch_water`
+    3) `water_plants`
+    4) `harvest_plant`
+- A player sees an action on mobile only when adjacent to its station.
+- `interact` starts a 3s progress for that player.
+- Active action progress is broadcast and rendered above the corresponding player on display.
 
 ---
 

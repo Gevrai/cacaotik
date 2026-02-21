@@ -45,6 +45,9 @@
       <div id="action-title">—</div>
       <div id="action-target">—</div>
       <div id="action-timer">—</div>
+      <div id="action-progress" aria-hidden="true">
+        <div id="action-progress-fill"></div>
+      </div>
       <div id="player-position">Position: —</div>
       <button id="btn-interact" type="button">Interagir</button>
     </div>
@@ -107,37 +110,35 @@
     const actionTitleEl = document.getElementById('action-title');
     const actionTargetEl = document.getElementById('action-target');
     const actionTimerEl = document.getElementById('action-timer');
+    const actionProgressEl = document.getElementById('action-progress');
+    const actionProgressFillEl = document.getElementById('action-progress-fill');
     const playerPositionEl = document.getElementById('player-position');
     const interactBtnEl = document.getElementById('btn-interact');
 
     let myId = null;
     let currentAction = null;
+    let actionsByPlayer = {};
 
-    function getMyRole(action) {
-      if (!myId || !action) return 'none';
-      if (action.requesterId === myId) return 'requester';
-      if (action.actorId === myId) return 'actor';
-      return 'spectator';
+    function updateMyActionFromSnapshot() {
+      if (!myId) return;
+      currentAction = actionsByPlayer[myId] || null;
     }
 
     function renderAction() {
       if (!currentAction) {
-        actionRoleEl.textContent = 'En attente d\'action…';
+        actionRoleEl.textContent = 'Aucune action ici';
         actionTitleEl.textContent = '—';
         actionTargetEl.textContent = '—';
         actionTimerEl.textContent = '—';
+        actionProgressEl.classList.remove('visible');
+        actionProgressFillEl.style.width = '0%';
         interactBtnEl.disabled = true;
         return;
       }
 
-      const role = getMyRole(currentAction);
-      if (role === 'requester') {
-        actionRoleEl.textContent = `Tu demandes au joueur ${currentAction.actorId} :`;
-      } else if (role === 'actor') {
-        actionRoleEl.textContent = 'Action à faire :';
-      } else {
-        actionRoleEl.textContent = `Action en cours (joueur ${currentAction.actorId})`;
-      }
+      actionRoleEl.textContent = currentAction.status === 'in_progress'
+        ? 'Action en cours…'
+        : 'Action disponible';
 
       actionTitleEl.textContent = currentAction.title;
       actionTargetEl.textContent = `Lieu: ${currentAction.targetName} (${currentAction.gridX}, ${currentAction.gridY})`;
@@ -146,8 +147,14 @@
         const elapsed = Date.now() - currentAction.startedAt;
         const remainingMs = Math.max(0, currentAction.durationMs - elapsed);
         actionTimerEl.textContent = `Timer: ${(remainingMs / 1000).toFixed(1)}s`;
+
+        const progress = Math.max(0, Math.min(1, elapsed / currentAction.durationMs));
+        actionProgressEl.classList.add('visible');
+        actionProgressFillEl.style.width = `${(progress * 100).toFixed(1)}%`;
       } else {
         actionTimerEl.textContent = `Timer: ${(currentAction.durationMs / 1000).toFixed(1)}s`;
+        actionProgressEl.classList.remove('visible');
+        actionProgressFillEl.style.width = '0%';
       }
 
       interactBtnEl.disabled = currentAction.status !== 'pending';
@@ -175,6 +182,8 @@
           infoEl.textContent = msg.name || `Joueur ${myId}`;
           dotEl.style.background = msg.color;
           statusEl.textContent = 'prêt';
+          updateMyActionFromSnapshot();
+          renderAction();
         }
 
         if (msg.type === 'state' && myId) {
@@ -186,12 +195,15 @@
 
 
         if (msg.type === 'action_update') {
-          currentAction = msg.action;
+          actionsByPlayer = msg.actionsByPlayer || {};
+          updateMyActionFromSnapshot();
           renderAction();
         }
 
         if (msg.type === 'action_result') {
-          statusEl.textContent = msg.message || 'action update';
+          if (!msg.playerId || msg.playerId === myId) {
+            statusEl.textContent = msg.message || 'action update';
+          }
         }
       };
 

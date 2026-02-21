@@ -2,6 +2,28 @@
 body { background: #1a1a2e; overflow: hidden; }
 #game { position: fixed; inset: 0; }
 canvas { display: block; }
+#tasks-gui {
+	position: fixed;
+	top: 12px;
+	left: 12px;
+	color: #fff;
+	font: 14px monospace;
+	background: rgba(0, 0, 0, 0.6);
+	border: 1px solid #2a2a4a;
+	padding: 8px 10px;
+	border-radius: 6px;
+	z-index: 25;
+	pointer-events: none;
+}
+#tasks-title {
+	font-weight: 700;
+	margin-bottom: 4px;
+}
+#tasks-list {
+	list-style: none;
+	display: grid;
+	gap: 2px;
+}
 #status {
 	position: fixed;
 	top: 8px;
