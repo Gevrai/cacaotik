@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Cacaotique — Display</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a2e; overflow: hidden; }
+    canvas { display: block; }
+    #status { position: fixed; top: 8px; right: 12px; color: #aaa; font: 14px monospace; }
+  </style>
+</head>
+<body>
+  <div id="status">connecting…</div>
+  <canvas id="game"></canvas>
+  <script>
+    const GRID_SIZE = 32;
+    const GRID_COLS = 20;
+    const GRID_ROWS = 15;
+
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    canvas.width = GRID_COLS * GRID_SIZE;
+    canvas.height = GRID_ROWS * GRID_SIZE;
+
+    let players = {};
+
+    function drawGrid() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#2a2a4a';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= GRID_COLS; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * GRID_SIZE, 0);
+        ctx.lineTo(x * GRID_SIZE, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= GRID_ROWS; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * GRID_SIZE);
+        ctx.lineTo(canvas.width, y * GRID_SIZE);
+        ctx.stroke();
+      }
+    }
+
+    function drawPlayers() {
+      for (const p of Object.values(players)) {
+        const cx = p.gridX * GRID_SIZE + GRID_SIZE / 2;
+        const cy = p.gridY * GRID_SIZE + GRID_SIZE / 2;
+        const r = GRID_SIZE / 2 - 4;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // Player ID label
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(p.id, cx, cy);
+      }
+    }
+
+    function render() {
+      drawGrid();
+      drawPlayers();
+    }
+
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${location.host}`);
+    const statusEl = document.getElementById('status');
+
+    ws.onopen = () => { statusEl.textContent = 'display connected'; };
+    ws.onclose = () => { statusEl.textContent = 'disconnected'; };
+
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'state') {
+        players = {};
+        for (const p of msg.players) players[p.id] = p;
+        render();
+      }
+      if (msg.type === 'init') {
+        // Display screen doesn't need init, but update status
+        statusEl.textContent = `players: ${Object.keys(players).length}`;
+      }
+    };
+
+    // Initial render (empty grid)
+    render();
+  </script>
+</body>
+</html>
