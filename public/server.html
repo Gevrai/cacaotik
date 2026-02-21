@@ -79,6 +79,7 @@
           this._drawFallbackGrid();
           this._defineCharAnims();
           this._setupPlayers();
+          this._setupBees();
           return;
         }
 
@@ -128,6 +129,7 @@
           this._drawFallbackGrid();
           this._defineCharAnims();
           this._setupPlayers();
+          this._setupBees();
           return;
         }
 
@@ -139,6 +141,7 @@
 
         this._defineCharAnims();
         this._setupPlayers();
+        this._setupBees();
       }
 
       fitMapToViewport(mapWidth, mapHeight) {
@@ -196,6 +199,44 @@
         }
       }
 
+      _setupBees() {
+        // Tile 95 = bee hive at grid col=4, row=18 → world center (72, 296) in 16px tile space
+        const HIVE_X = 4 * 16 + 8;
+        const HIVE_Y = 18 * 16 + 8;
+        const BEE_COUNT = 10;
+
+        this._bees = [];
+        for (let i = 0; i < BEE_COUNT; i++) {
+          const g = this.add.graphics();
+          // Body
+          g.fillStyle(0xf5c518, 1);
+          g.fillEllipse(0, 0, 4, 3);
+          // Stripes
+          g.fillStyle(0x3a2800, 1);
+          g.fillRect(-1, -1, 1, 2);
+          g.fillRect(1, -1, 1, 2);
+          // Wings
+          g.fillStyle(0xcceeff, 0.6);
+          g.fillEllipse(-2, -2, 3, 2);
+          g.fillEllipse(2, -2, 3, 2);
+          g.setDepth(10);
+
+          const phase = (i / BEE_COUNT) * Math.PI * 2;
+          const radius = 10 + Math.random() * 12;
+          const speed  = 1.2 + Math.random() * 1.0;
+          const yWobble = 3 + Math.random() * 4;
+          const wobbleSpeed = 1.5 + Math.random() * 2;
+          const wobblePhase = Math.random() * Math.PI * 2;
+
+          this._bees.push({ g, phase, radius, speed, yWobble, wobbleSpeed, wobblePhase });
+          g.setPosition(HIVE_X, HIVE_Y);
+        }
+
+        this._hiveX = HIVE_X;
+        this._hiveY = HIVE_Y;
+        this._beeTime = 0;
+      }
+
       _setupPlayers() {
         this._sprites = {};  // id → Phaser.GameObjects.Sprite
         this._labels = {};   // id → Phaser.GameObjects.Text
@@ -205,6 +246,20 @@
 
       update(time, delta) {
         if (!this._sprites) return;
+
+        // Animate bees around the hive
+        if (this._bees) {
+          this._beeTime += delta / 1000;
+          for (const b of this._bees) {
+            const angle = b.phase + this._beeTime * b.speed;
+            const wx = Math.cos(angle) * b.radius;
+            const wy = Math.sin(angle) * b.radius * 0.5 // flatten orbit
+                     + Math.sin(this._beeTime * b.wobbleSpeed + b.wobblePhase) * b.yWobble;
+            b.g.setPosition(this._hiveX + wx, this._hiveY + wy);
+            // Flip graphic when moving left
+            b.g.setScale(Math.cos(angle + 0.01) - Math.cos(angle) < 0 ? -1 : 1, 1);
+          }
+        }
         const DISPLAY_GRID = 16; // display tile size
         const SCALE = DISPLAY_GRID / 32; // server uses 32px grid
         const dt = delta / 1000; // seconds
