@@ -78,6 +78,10 @@
         this.load.spritesheet('char_white',  `/assets/characters/players/white.png?t=${t}`,  { frameWidth: 24, frameHeight: 24 });
         this.load.image('oie0', `/assets/characters/oie/oie0.png?t=${t}`);
         this.load.image('oie1', `/assets/characters/oie/oie1.png?t=${t}`);
+        this.load.image('llama_walk1',  `/assets/characters/llama/llama_walk1.png?t=${t}`);
+        this.load.image('llama_walk2',  `/assets/characters/llama/llama_walk2.png?t=${t}`);
+        this.load.image('llama_stand',  `/assets/characters/llama/llama_stand.png?t=${t}`);
+        this.load.image('llama_sit',    `/assets/characters/llama/llama_sit.png?t=${t}`);
       }
 
       create() {
@@ -91,6 +95,7 @@
           this._setupPlayers();
           this._setupBees();
           this._setupGeese();
+          this._setupLlamas();
           return;
         }
 
@@ -142,6 +147,7 @@
           this._setupPlayers();
           this._setupBees();
           this._setupGeese();
+          this._setupLlamas();
           return;
         }
 
@@ -155,6 +161,7 @@
         this._setupPlayers();
         this._setupBees();
         this._setupGeese();
+        this._setupLlamas();
       }
 
       fitMapToViewport(mapWidth, mapHeight) {
@@ -282,6 +289,42 @@
         this._gooseSpeed = GOOSE_SPEED;
       }
 
+      _setupLlamas() {
+        const MAP_W = 30 * 16;
+        const MAP_H = 20 * 16;
+        const MARGIN = 24;
+        const LLAMA_COUNT = 2;
+        const LLAMA_SPEED = 14; // px/s
+
+        this._llamas = [];
+        for (let i = 0; i < LLAMA_COUNT; i++) {
+          const x = MARGIN + Math.random() * (MAP_W - MARGIN * 2);
+          const y = MARGIN + Math.random() * (MAP_H - MARGIN * 2);
+          const img = this.add.image(x, y, 'llama_stand');
+          img.setScale(20 / img.width); // roughly 1.25 tiles tall
+          img.setDepth(5);
+
+          // Llamas start in a random idle state
+          const roll = Math.random();
+          const state = roll < 0.4 ? 'sit' : roll < 0.7 ? 'stand' : 'walk';
+          const angle = Math.random() * Math.PI * 2;
+          this._llamas.push({
+            img,
+            state,           // 'walk' | 'stand' | 'sit'
+            vx: state === 'walk' ? Math.cos(angle) * LLAMA_SPEED : 0,
+            vy: state === 'walk' ? Math.sin(angle) * LLAMA_SPEED : 0,
+            stateTimer: 2 + Math.random() * 5,
+            frameTimer: 0,
+            frameCurrent: 0,
+          });
+          img.setTexture(state === 'sit' ? 'llama_sit' : 'llama_stand');
+        }
+        this._llamaMapW = MAP_W;
+        this._llamaMapH = MAP_H;
+        this._llamaMargin = MARGIN;
+        this._llamaSpeed = LLAMA_SPEED;
+      }
+
       _setupPlayers() {
         this._sprites = {};  // id → Phaser.GameObjects.Sprite
         this._labels = {};   // id → Phaser.GameObjects.Text
@@ -344,6 +387,84 @@
               g.frameTimer = 0;
               g.frameCurrent = 1 - g.frameCurrent;
               g.img.setTexture(g.frameCurrent === 0 ? 'oie0' : 'oie1');
+            }
+          }
+        }
+        // Animate llamas — prefer sitting/standing, occasionally walk
+        if (this._llamas) {
+          const dt_s = delta / 1000;
+          const MAP_W = this._llamaMapW;
+          const MAP_H = this._llamaMapH;
+          const MARGIN = this._llamaMargin;
+          const SPEED = this._llamaSpeed;
+          for (const l of this._llamas) {
+            l.stateTimer -= dt_s;
+            if (l.stateTimer <= 0) {
+              // Weighted transition: 40% sit, 30% stand, 30% walk
+              const roll = Math.random();
+              if (roll < 0.4) {
+                l.state = 'sit';
+                l.vx = 0; l.vy = 0;
+                l.img.setTexture('llama_sit');
+                l.stateTimer = 3 + Math.random() * 6;
+              } else if (roll < 0.7) {
+                l.state = 'stand';
+                l.vx = 0; l.vy = 0;
+                l.img.setTexture('llama_stand');
+                l.stateTimer = 1.5 + Math.random() * 4;
+              } else {
+                l.state = 'walk';
+                const angle = Math.random() * Math.PI * 2;
+                l.vx = Math.cos(angle) * SPEED;
+                l.vy = Math.sin(angle) * SPEED;
+                l.stateTimer = 1 + Math.random() * 2.5;
+              }
+            }
+
+            if (l.state === 'walk') {
+              l.img.x += l.vx * dt_s;
+              l.img.y += l.vy * dt_s;
+
+              // Bounce off edges
+              if (l.img.x < MARGIN)        { l.img.x = MARGIN;        l.vx =  Math.abs(l.vx); }
+              if (l.img.x > MAP_W - MARGIN) { l.img.x = MAP_W - MARGIN; l.vx = -Math.abs(l.vx); }
+              if (l.img.y < MARGIN)        { l.img.y = MARGIN;        l.vy =  Math.abs(l.vy); }
+              if (l.img.y > MAP_H - MARGIN) { l.img.y = MAP_H - MARGIN; l.vy = -Math.abs(l.vy); }
+
+              // Sprites face left — flip when moving right
+              l.img.setFlipX(l.vx > 0);
+
+              // Walk animation: alternate walk1/walk2 every 0.2s
+              l.frameTimer += dt_s;
+              if (l.frameTimer >= 0.2) {
+                l.frameTimer = 0;
+                l.frameCurrent = 1 - l.frameCurrent;
+                l.img.setTexture(l.frameCurrent === 0 ? 'llama_walk1' : 'llama_walk2');
+              }
+            }
+          }
+          // Llama-llama collision (only 2, so one pair)
+          const LLAMA_RADIUS = 10;
+          const [a, b] = this._llamas;
+          if (a && b) {
+            const dx = b.img.x - a.img.x;
+            const dy = b.img.y - a.img.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < LLAMA_RADIUS * 2 && dist > 0) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const overlap = LLAMA_RADIUS * 2 - dist;
+              a.img.x -= nx * overlap * 0.5;
+              a.img.y -= ny * overlap * 0.5;
+              b.img.x += nx * overlap * 0.5;
+              b.img.y += ny * overlap * 0.5;
+              // Reflect velocities along collision normal
+              const aDot = a.vx * nx + a.vy * ny;
+              const bDot = b.vx * nx + b.vy * ny;
+              a.vx -= (aDot - bDot) * nx;
+              a.vy -= (aDot - bDot) * ny;
+              b.vx -= (bDot - aDot) * nx;
+              b.vy -= (bDot - aDot) * ny;
             }
           }
         }
