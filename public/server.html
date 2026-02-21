@@ -40,7 +40,7 @@
 
       init() {
         // Called before preload on every (re)start — capture current cache bust
-        this._mapUrl = '/assets/map.tmj?t=' + mapCacheBust;
+        this._mapUrl = '/assets/basemap1.tmj?t=' + mapCacheBust;
       }
 
       preload() {
@@ -48,10 +48,7 @@
         if (this.cache.tilemap.has('map')) this.cache.tilemap.remove('map');
 
         this.load.tilemapTiledJSON('map', this._mapUrl);
-
-        // Load every image in assets/ that might be a tileset.
-        // Artist must match the name used in Tiled's tileset "Name" field.
-        this.load.image('tileset', '/assets/tileset.png?t=' + mapCacheBust);
+        this.load.image('tilemap_packed', '/assets/tilemap_packed.png?t=' + mapCacheBust);
       }
 
       create() {
@@ -95,7 +92,7 @@
       }
 
       _drawFallbackGrid() {
-        const GRID_SIZE = 32, COLS = 20, ROWS = 15;
+        const GRID_SIZE = 16, COLS = 30, ROWS = 20;
         const g = this.add.graphics();
         g.lineStyle(1, 0x2a2a4a, 1);
         for (let x = 0; x <= COLS; x++) {
@@ -113,7 +110,7 @@
 
       update() {
         if (!this._playerGfx) return;
-        const GRID_SIZE = 32;
+        const GRID_SIZE = 16;
         const gfx = this._playerGfx;
         gfx.clear();
 
@@ -157,8 +154,8 @@
     // ── Phaser config ───────────────────────────────────────────────────────
     const config = {
       type: Phaser.AUTO,
-      width: 20 * 32,   // default; resized once map loads
-      height: 15 * 32,
+      width: 30 * 16,
+      height: 20 * 16,
       backgroundColor: '#1a1a2e',
       scene: [GameScene],
       parent: document.body,
@@ -205,8 +202,6 @@
       }
     };
 
-    // Initial render (empty grid)
-    render();
     loadConnectInfo();
   </script>
 </body>

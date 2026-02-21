@@ -3,6 +3,25 @@
     "expandedProjectPaths": [
     ],
     "fileStates": {
+        "basemap1.tmj": {
+            "scale": 0.8134374999999999,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 240.3380714560123,
+                "y": 159.81559738762968
+            }
+        },
+        "basemap1.tmj#tilemap_packed": {
+            "scaleInDock": 1
+        },
+        "basemap1.tmx": {
+            "scale": 0.8134374999999999,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 240.3380714560123,
+                "y": 159.81559738762968
+            }
+        },
         "tilemap_packed.tsx": {
             "scaleInDock": 1
         }
