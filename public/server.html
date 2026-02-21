@@ -6,6 +6,12 @@
   <link rel="stylesheet" href="/styles/server.css" />
 </head>
 <body>
+  <div id="boot-overlay" aria-live="polite">
+    <img id="boot-image" src="/assets/7ee658ea-f605-4111-bc28-a37cbbe55390.png" alt="Cacaotique loading" />
+    <div id="boot-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div id="boot-progress-fill"></div>
+    </div>
+  </div>
   <div id="status">connecting…</div>
   <div id="tasks-gui">
     <div id="tasks-title">:GUI:</div>
@@ -51,7 +57,29 @@
     let inProgressByPlayer = {};
       let fireBursts = [];
     let mapCacheBust = Date.now();
+    const bootOverlayEl = document.getElementById('boot-overlay');
+    const bootProgressFillEl = document.getElementById('boot-progress-fill');
     const statusEl = document.getElementById('status');
+
+    document.body.classList.add('booting');
+    const fakeLoadMs = 4000;
+    const fakeLoadStart = performance.now();
+
+    function tickBootProgress(now) {
+      const elapsed = now - fakeLoadStart;
+      const ratio = Math.max(0, Math.min(1, elapsed / fakeLoadMs));
+      bootProgressFillEl.style.width = `${(ratio * 100).toFixed(1)}%`;
+      if (ratio < 1) {
+        requestAnimationFrame(tickBootProgress);
+      }
+    }
+
+    requestAnimationFrame(tickBootProgress);
+
+    setTimeout(() => {
+      document.body.classList.remove('booting');
+      if (bootOverlayEl) bootOverlayEl.classList.add('hidden');
+    }, fakeLoadMs);
 
     // ── Phaser scene ────────────────────────────────────────────────────────
     class GameScene extends Phaser.Scene {
