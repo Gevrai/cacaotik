@@ -7,36 +7,109 @@
   <link rel="stylesheet" href="/styles/index.css" />
 </head>
 <body>
-  <div id="info">connecting…</div>
-  <div id="dot"></div>
 
-  <div id="action-card">
-    <div id="action-role">En attente d'action…</div>
-    <div id="action-title">—</div>
-    <div id="action-target">—</div>
-    <div id="action-timer">—</div>
-    <button id="btn-interact" type="button">Interagir</button>
-  </div>
+  <!-- ── LOBBY ── -->
+  <div id="lobby">
+    <h1 id="lobby-title">Cacaotique</h1>
 
-  <div id="joystick" aria-label="movement joystick">
-    <div id="joystick-base">
-      <div id="joystick-stick"></div>
+    <label for="name-input" class="lobby-label">Ton nom</label>
+    <input id="name-input" type="text" maxlength="16" placeholder="Entrer un nom…"
+           autocomplete="off" autocorrect="off" spellcheck="false" />
+
+    <p class="lobby-label">Choisis ton personnage</p>
+    <div id="character-grid">
+      <button class="char-btn" data-char="red">
+        <div class="char-sprite" style="background-image: url('/assets/characters/players/red.png')"></div>
+        <span>Rouge</span>
+      </button>
+      <button class="char-btn" data-char="blue">
+        <div class="char-sprite" style="background-image: url('/assets/characters/players/blue.png')"></div>
+        <span>Bleu</span>
+      </button>
+      <button class="char-btn" data-char="white">
+        <div class="char-sprite" style="background-image: url('/assets/characters/players/white.png')"></div>
+        <span>Blanc</span>
+      </button>
+      <button class="char-btn" data-char="yellow">
+        <div class="char-sprite" style="background-image: url('/assets/characters/players/yellow.png')"></div>
+        <span>Jaune</span>
+      </button>
     </div>
+
+    <button id="btn-enter" disabled>Rejoindre</button>
   </div>
 
-  <div id="status">—</div>
+  <!-- ── GAME ── -->
+  <div id="game">
+    <div id="info">connecting…</div>
+    <div id="dot"></div>
+
+    <div id="action-card">
+      <div id="action-role">En attente d'action…</div>
+      <div id="action-title">—</div>
+      <div id="action-target">—</div>
+      <div id="action-timer">—</div>
+      <button id="btn-interact" type="button">Interagir</button>
+    </div>
+
+    <div id="joystick" aria-label="movement joystick">
+      <div id="joystick-base">
+        <div id="joystick-stick"></div>
+      </div>
+    </div>
+
+    <div id="status">—</div>
+  </div>
 
   <script>
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${proto}://${location.host}`);
+    // ── Lobby logic ──────────────────────────────────────────────────────────
+    const lobbyEl       = document.getElementById('lobby');
+    const gameEl        = document.getElementById('game');
+    const nameInputEl   = document.getElementById('name-input');
+    const charBtns      = document.querySelectorAll('.char-btn');
+    const btnEnterEl    = document.getElementById('btn-enter');
 
-    const infoEl = document.getElementById('info');
-    const dotEl = document.getElementById('dot');
-    const statusEl = document.getElementById('status');
-    const joystickEl = document.getElementById('joystick');
-    const joystickBaseEl = document.getElementById('joystick-base');
+    let selectedChar = null;
+
+    // Restore saved values
+    const savedName = localStorage.getItem('cacao_name');
+    const savedChar = localStorage.getItem('cacao_char');
+    if (savedName) nameInputEl.value = savedName;
+    if (savedChar) selectChar(savedChar);
+
+    function selectChar(char) {
+      charBtns.forEach(b => b.classList.toggle('selected', b.dataset.char === char));
+      selectedChar = char;
+      updateEnterBtn();
+    }
+
+    function updateEnterBtn() {
+      btnEnterEl.disabled = !(nameInputEl.value.trim().length > 0 && selectedChar);
+    }
+
+    charBtns.forEach(btn => {
+      btn.addEventListener('click', () => selectChar(btn.dataset.char));
+    });
+
+    nameInputEl.addEventListener('input', updateEnterBtn);
+
+    btnEnterEl.addEventListener('click', () => {
+      const name = nameInputEl.value.trim() || 'Joueur';
+      localStorage.setItem('cacao_name', name);
+      localStorage.setItem('cacao_char', selectedChar);
+      lobbyEl.style.display = 'none';
+      gameEl.style.display = 'flex';
+      startGame(name, selectedChar);
+    });
+
+    // ── Game logic ───────────────────────────────────────────────────────────
+    const infoEl        = document.getElementById('info');
+    const dotEl         = document.getElementById('dot');
+    const statusEl      = document.getElementById('status');
+    const joystickEl    = document.getElementById('joystick');
+    const joystickBaseEl  = document.getElementById('joystick-base');
     const joystickStickEl = document.getElementById('joystick-stick');
-    const actionRoleEl = document.getElementById('action-role');
+    const actionRoleEl  = document.getElementById('action-role');
     const actionTitleEl = document.getElementById('action-title');
     const actionTargetEl = document.getElementById('action-target');
     const actionTimerEl = document.getElementById('action-timer');
@@ -46,194 +119,207 @@
     let myColor = null;
     let currentAction = null;
 
-    ws.onopen = () => { statusEl.textContent = 'connected'; };
-    ws.onclose = () => { statusEl.textContent = 'disconnected'; infoEl.textContent = 'lost connection'; };
+    function startGame(name, character) {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${proto}://${location.host}`);
 
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      if (msg.type === 'init') {
-        myId = msg.id;
-        myColor = msg.color;
-        infoEl.textContent = `Player ${myId}`;
-        dotEl.style.background = myColor;
-        statusEl.textContent = 'ready';
+      ws.onopen = () => {
+        statusEl.textContent = 'connected';
+        ws.send(JSON.stringify({ type: 'join', name, character }));
+      };
+
+      ws.onclose = () => {
+        statusEl.textContent = 'disconnected';
+        infoEl.textContent = 'connexion perdue';
+      };
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+
+        if (msg.type === 'init') {
+          myId = msg.id;
+          myColor = msg.color;
+          infoEl.textContent = msg.name || `Joueur ${myId}`;
+          dotEl.style.background = myColor;
+          statusEl.textContent = 'prêt';
+        }
+
+        if (msg.type === 'action_update') {
+          currentAction = msg.action;
+          renderAction();
+        }
+
+        if (msg.type === 'action_result') {
+          statusEl.textContent = msg.message || 'action update';
+        }
+      };
+
+      function sendMove(dir) {
+        if (ws.readyState !== 1) return;
+        ws.send(JSON.stringify({ type: 'move', dir }));
       }
 
-      if (msg.type === 'action_update') {
-        currentAction = msg.action;
-        renderAction();
+      function sendInteract() {
+        if (ws.readyState !== 1) return;
+        ws.send(JSON.stringify({ type: 'interact' }));
       }
 
-      if (msg.type === 'action_result') {
-        statusEl.textContent = msg.message || 'action update';
-      }
-    };
-
-    function sendMove(dir) {
-      if (ws.readyState !== 1) return;
-      ws.send(JSON.stringify({ type: 'move', dir }));
-    }
-
-    function sendInteract() {
-      if (ws.readyState !== 1) return;
-      ws.send(JSON.stringify({ type: 'interact' }));
-    }
-
-    function getMyRole(action) {
-      if (!myId || !action) return 'none';
-      if (action.requesterId === myId) return 'requester';
-      if (action.actorId === myId) return 'actor';
-      return 'spectator';
-    }
-
-    function renderAction() {
-      if (!currentAction) {
-        actionRoleEl.textContent = 'En attente d\'action…';
-        actionTitleEl.textContent = '—';
-        actionTargetEl.textContent = '—';
-        actionTimerEl.textContent = '—';
-        interactBtnEl.disabled = true;
-        return;
+      function getMyRole(action) {
+        if (!myId || !action) return 'none';
+        if (action.requesterId === myId) return 'requester';
+        if (action.actorId === myId) return 'actor';
+        return 'spectator';
       }
 
-      const role = getMyRole(currentAction);
-      if (role === 'requester') {
-        actionRoleEl.textContent = `Tu demandes au joueur ${currentAction.actorId} :`;
-      } else if (role === 'actor') {
-        actionRoleEl.textContent = 'Action à faire :';
-      } else {
-        actionRoleEl.textContent = `Action en cours (joueur ${currentAction.actorId})`;
+      function renderAction() {
+        if (!currentAction) {
+          actionRoleEl.textContent = 'En attente d\'action…';
+          actionTitleEl.textContent = '—';
+          actionTargetEl.textContent = '—';
+          actionTimerEl.textContent = '—';
+          interactBtnEl.disabled = true;
+          return;
+        }
+
+        const role = getMyRole(currentAction);
+        if (role === 'requester') {
+          actionRoleEl.textContent = `Tu demandes au joueur ${currentAction.actorId} :`;
+        } else if (role === 'actor') {
+          actionRoleEl.textContent = 'Action à faire :';
+        } else {
+          actionRoleEl.textContent = `Action en cours (joueur ${currentAction.actorId})`;
+        }
+
+        actionTitleEl.textContent = currentAction.title;
+        actionTargetEl.textContent = `Lieu: ${currentAction.targetName} (${currentAction.gridX}, ${currentAction.gridY})`;
+
+        if (currentAction.status === 'in_progress' && currentAction.startedAt) {
+          const elapsed = Date.now() - currentAction.startedAt;
+          const remainingMs = Math.max(0, currentAction.durationMs - elapsed);
+          actionTimerEl.textContent = `Timer: ${(remainingMs / 1000).toFixed(1)}s`;
+        } else {
+          actionTimerEl.textContent = `Timer: ${(currentAction.durationMs / 1000).toFixed(1)}s`;
+        }
+
+        interactBtnEl.disabled = !(role === 'actor' && currentAction.status === 'pending');
       }
 
-      actionTitleEl.textContent = currentAction.title;
-      actionTargetEl.textContent = `Lieu: ${currentAction.targetName} (${currentAction.gridX}, ${currentAction.gridY})`;
+      const SEND_INTERVAL_MS = 400;
+      const DEAD_ZONE = 18;
+      const MAX_RADIUS = 70;
+      const SNAP_RADIUS = 64;
 
-      if (currentAction.status === 'in_progress' && currentAction.startedAt) {
-        const elapsed = Date.now() - currentAction.startedAt;
-        const remainingMs = Math.max(0, currentAction.durationMs - elapsed);
-        actionTimerEl.textContent = `Timer: ${(remainingMs / 1000).toFixed(1)}s`;
-      } else {
-        actionTimerEl.textContent = `Timer: ${(currentAction.durationMs / 1000).toFixed(1)}s`;
+      let pointerId = null;
+      let activeDir = null;
+      let moveInterval = null;
+
+      function setStickPosition(x, y) {
+        joystickStickEl.style.transform = `translate(${x}px, ${y}px)`;
       }
 
-      interactBtnEl.disabled = !(role === 'actor' && currentAction.status === 'pending');
-    }
-
-    const SEND_INTERVAL_MS = 400;
-    const DEAD_ZONE = 18;
-    const MAX_RADIUS = 70;
-    const SNAP_RADIUS = 64;
-
-    let pointerId = null;
-    let activeDir = null;
-    let moveInterval = null;
-
-    function setStickPosition(x, y) {
-      joystickStickEl.style.transform = `translate(${x}px, ${y}px)`;
-    }
-
-    function resetJoystick() {
-      activeDir = null;
-      setStickPosition(0, 0);
-      if (moveInterval) {
-        clearInterval(moveInterval);
-        moveInterval = null;
-      }
-      joystickBaseEl.classList.remove('active');
-    }
-
-    function vectorToDirection(dx, dy) {
-      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-
-      if (angle >= -22.5 && angle < 22.5) return 'right';
-      if (angle >= 22.5 && angle < 67.5) return 'down-right';
-      if (angle >= 67.5 && angle < 112.5) return 'down';
-      if (angle >= 112.5 && angle < 157.5) return 'down-left';
-      if (angle >= 157.5 || angle < -157.5) return 'left';
-      if (angle >= -157.5 && angle < -112.5) return 'up-left';
-      if (angle >= -112.5 && angle < -67.5) return 'up';
-      return 'up-right';
-    }
-
-    function updateFromPointer(clientX, clientY) {
-      const rect = joystickBaseEl.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-
-      let dx = clientX - centerX;
-      let dy = clientY - centerY;
-
-      const distance = Math.hypot(dx, dy);
-      if (distance > MAX_RADIUS) {
-        const scale = MAX_RADIUS / distance;
-        dx *= scale;
-        dy *= scale;
-      }
-
-      if (distance < DEAD_ZONE) {
+      function resetJoystick() {
         activeDir = null;
         setStickPosition(0, 0);
-        return;
+        if (moveInterval) {
+          clearInterval(moveInterval);
+          moveInterval = null;
+        }
+        joystickBaseEl.classList.remove('active');
       }
 
-      const angle = Math.atan2(dy, dx);
-      const snappedAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
-      const snappedX = Math.cos(snappedAngle) * SNAP_RADIUS;
-      const snappedY = Math.sin(snappedAngle) * SNAP_RADIUS;
-      setStickPosition(snappedX, snappedY);
+      function vectorToDirection(dx, dy) {
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
 
-      activeDir = vectorToDirection(dx, dy);
-    }
+        if (angle >= -22.5 && angle < 22.5) return 'right';
+        if (angle >= 22.5 && angle < 67.5) return 'down-right';
+        if (angle >= 67.5 && angle < 112.5) return 'down';
+        if (angle >= 112.5 && angle < 157.5) return 'down-left';
+        if (angle >= 157.5 || angle < -157.5) return 'left';
+        if (angle >= -157.5 && angle < -112.5) return 'up-left';
+        if (angle >= -112.5 && angle < -67.5) return 'up';
+        return 'up-right';
+      }
 
-    function startSendingLoop() {
-      if (moveInterval) return;
-      moveInterval = setInterval(() => {
+      function updateFromPointer(clientX, clientY) {
+        const rect = joystickBaseEl.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        let dx = clientX - centerX;
+        let dy = clientY - centerY;
+
+        const distance = Math.hypot(dx, dy);
+        if (distance > MAX_RADIUS) {
+          const scale = MAX_RADIUS / distance;
+          dx *= scale;
+          dy *= scale;
+        }
+
+        if (distance < DEAD_ZONE) {
+          activeDir = null;
+          setStickPosition(0, 0);
+          return;
+        }
+
+        const angle = Math.atan2(dy, dx);
+        const snappedAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+        const snappedX = Math.cos(snappedAngle) * SNAP_RADIUS;
+        const snappedY = Math.sin(snappedAngle) * SNAP_RADIUS;
+        setStickPosition(snappedX, snappedY);
+
+        activeDir = vectorToDirection(dx, dy);
+      }
+
+      function startSendingLoop() {
+        if (moveInterval) return;
+        moveInterval = setInterval(() => {
+          if (activeDir) sendMove(activeDir);
+        }, SEND_INTERVAL_MS);
+      }
+
+      joystickEl.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        pointerId = e.pointerId;
+        joystickBaseEl.classList.add('active');
+        joystickEl.setPointerCapture(pointerId);
+        updateFromPointer(e.clientX, e.clientY);
         if (activeDir) sendMove(activeDir);
-      }, SEND_INTERVAL_MS);
-    }
+        startSendingLoop();
+      });
 
-    joystickEl.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      pointerId = e.pointerId;
-      joystickBaseEl.classList.add('active');
-      joystickEl.setPointerCapture(pointerId);
-      updateFromPointer(e.clientX, e.clientY);
-      if (activeDir) sendMove(activeDir);
-      startSendingLoop();
-    });
+      joystickEl.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== pointerId) return;
+        e.preventDefault();
+        updateFromPointer(e.clientX, e.clientY);
+      });
 
-    joystickEl.addEventListener('pointermove', (e) => {
-      if (e.pointerId !== pointerId) return;
-      e.preventDefault();
-      updateFromPointer(e.clientX, e.clientY);
-    });
-
-    function stopPointer(e) {
-      if (e.pointerId !== pointerId) return;
-      if (joystickEl.hasPointerCapture(pointerId)) {
-        joystickEl.releasePointerCapture(pointerId);
+      function stopPointer(e) {
+        if (e.pointerId !== pointerId) return;
+        if (joystickEl.hasPointerCapture(pointerId)) {
+          joystickEl.releasePointerCapture(pointerId);
+        }
+        pointerId = null;
+        resetJoystick();
       }
-      pointerId = null;
+
+      joystickEl.addEventListener('pointerup', stopPointer);
+      joystickEl.addEventListener('pointercancel', stopPointer);
+      joystickEl.addEventListener('pointerleave', (e) => {
+        if (e.pointerId !== pointerId) return;
+        resetJoystick();
+      });
+
+      interactBtnEl.addEventListener('click', sendInteract);
+
+      setInterval(() => {
+        if (currentAction && currentAction.status === 'in_progress') {
+          renderAction();
+        }
+      }, 100);
+
       resetJoystick();
+      renderAction();
     }
-
-    joystickEl.addEventListener('pointerup', stopPointer);
-    joystickEl.addEventListener('pointercancel', stopPointer);
-    joystickEl.addEventListener('pointerleave', (e) => {
-      if (e.pointerId !== pointerId) return;
-      resetJoystick();
-    });
-
-    interactBtnEl.addEventListener('click', sendInteract);
-
-    setInterval(() => {
-      if (currentAction && currentAction.status === 'in_progress') {
-        renderAction();
-      }
-    }, 100);
-
-    resetJoystick();
-    renderAction();
   </script>
 </body>
 </html>

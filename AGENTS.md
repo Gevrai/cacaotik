@@ -91,6 +91,7 @@ All messages are JSON.
 
 | `type` | Fields | Description |
 |--------|--------|-------------|
+| `join` | `name: string, character: "red"\|"blue"\|"white"\|"yellow"` | First message after connect; registers the player with name + preferred character |
 | `move` | `dir: "up"\|"down"\|"left"\|"right"\|"up-left"\|"up-right"\|"down-left"\|"down-right"` | Move player one grid step |
 | `interact` | _(none)_ | Attempt interaction for current assigned action |
 
@@ -98,8 +99,8 @@ All messages are JSON.
 
 | `type` | Fields | Description |
 |--------|--------|-------------|
-| `init` | `id, color, gridX, gridY, gridSize, gridCols, gridRows` | Sent once on connection to the connecting client |
-| `state` | `players: [{id, color, gridX, gridY}]` | Full player state, sent after every change |
+| `init` | `id, name, character, color, gridX, gridY, gridSize, gridCols, gridRows` | Sent once after `join` to the joining client with assigned character/color |
+| `state` | `players: [{id, name, character, color, gridX, gridY}]` | Full player state, sent after every change |
 | `action_update` | `action: {id,key,title,description,targetName,gridX,gridY,durationMs,status,requesterId,actorId,startedAt}\|null, serverTime` | Current cooperative action state (or null if unavailable) |
 | `action_result` | `actionId, success, message` | Result/feedback after interact attempts or completion |
 | `reload_map` | `file: string` | Sent when a .tmj file changes; display restarts its Phaser scene |
@@ -120,7 +121,7 @@ All messages are JSON.
 - Movement/collision rules live in `scripts/movement.js` and are applied server-side.
 - Action assignment/timer/validation live in `scripts/actions.js` and are applied server-side.
 - The display (`server.html`) only renders what it receives — no local simulation.
-- Player colors are assigned server-side in order: red, blue, green, orange.
+- Players choose a name and character (red/blue/white/yellow) in the lobby before connecting. Server honours the preference if the character is free, otherwise assigns the first available one.
 - Max 4 players (limited by color array).
 
 ---
