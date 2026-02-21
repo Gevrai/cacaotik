@@ -3,17 +3,14 @@ const path = require('path');
 const { watchMaps } = require('./map-watcher');
 const { applyPlayerMove } = require('./movement');
 const { createActionManager } = require('./actions');
+const { loadMapNavigation } = require('./map-nav');
 
-// Grid config
 const GRID_SIZE = 32;
-const GRID_COLS = 20;
-const GRID_ROWS = 15;
-
 const CHARACTER_KEYS = ['red', 'blue', 'white', 'yellow'];
 const CHARACTER_COLORS = {
-  red:    '#e74c3c',
-  blue:   '#3498db',
-  white:  '#ffffff',
+  red: '#e74c3c',
+  blue: '#3498db',
+  white: '#ffffff',
   yellow: '#f1c40f',
 };
 
@@ -21,6 +18,26 @@ function setupWebSocket(server) {
   const wss = new WebSocketServer({ server });
   const players = {}; // id -> { id, name, character, color, gridX, gridY, ws }
   let nextId = 1;
+  const assetsDir = path.join(__dirname, '..', 'public', 'assets');
+  const mapFilePath = path.join(assetsDir, 'basemap2.tmj');
+
+  let nav;
+
+  function reloadNavigation() {
+    try {
+      nav = loadMapNavigation(mapFilePath);
+      console.log(`[websocket] navigation loaded from basemap2.tmj (${nav.gridCols}x${nav.gridRows}, blocked=${nav.blockedCells.size})`);
+    } catch (error) {
+      nav = {
+        gridCols: 30,
+        gridRows: 20,
+        blockedCells: new Set(),
+      };
+      console.warn('[websocket] failed to load map navigation, using fallback 30x20:', error.message);
+    }
+  }
+
+  reloadNavigation();
 
   function broadcast(payload) {
     const msg = JSON.stringify(payload);
@@ -30,6 +47,10 @@ function setupWebSocket(server) {
   }
 
   const actionManager = createActionManager({
+    stations: {
+      well: { x: 15, y: 2 },
+      plants: { x: 8, y: 4 },
+    },
     onActionChange: (action) => {
       broadcast({
         type: 'action_update',
@@ -103,8 +124,8 @@ function setupWebSocket(server) {
           gridX: player.gridX,
           gridY: player.gridY,
           gridSize: GRID_SIZE,
-          gridCols: GRID_COLS,
-          gridRows: GRID_ROWS,
+          gridCols: nav.gridCols,
+          gridRows: nav.gridRows,
         }));
 
         ws.send(JSON.stringify({
@@ -123,10 +144,10 @@ function setupWebSocket(server) {
 
       if (msg.type === 'move') {
         const result = applyPlayerMove(player, msg.dir, {
-          gridCols: GRID_COLS,
-          gridRows: GRID_ROWS,
+          gridCols: nav.gridCols,
+          gridRows: nav.gridRows,
           playersById: players,
-          blockedCells: null,
+          blockedCells: nav.blockedCells,
         });
         if (result.moved) broadcastState();
       }
@@ -147,8 +168,10 @@ function setupWebSocket(server) {
   });
 
   // Watch assets/ for map changes and broadcast hot-reload to all clients
-  const assetsDir = path.join(__dirname, '..', 'public', 'assets');
   watchMaps(assetsDir, (filename) => {
+    if (filename === 'basemap2.tmj') {
+      reloadNavigation();
+    }
     const msg = JSON.stringify({ type: 'reload_map', file: filename });
     for (const client of wss.clients) {
       if (client.readyState === 1) client.send(msg);

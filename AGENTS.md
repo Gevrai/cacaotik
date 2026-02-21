@@ -28,19 +28,24 @@ Cacaotique is a chaotic co-op farming/cooking game for a 6h game jam.
     ├── Receives input messages from mobile clients
     ├── Broadcasts full game state to all connected clients
     ├── Coordinates action assignments/progress with /scripts/actions.js
+    ├── Loads collision/nav data from /scripts/map-nav.js
     └── Starts map-watcher on /public/assets/ for hot-reload
 
 [Movement module — /scripts/movement.js]
     └── Applies move directions with grid bounds + collision checks
 
 [Actions module — /scripts/actions.js]
-    ├── Stores action library (map tasks)
+    ├── Stores action library (fetch water, water plants)
     ├── Assigns requester player (A) + actor player (B)
-    ├── Validates interact at target position
+    ├── Validates interact at target position / proximity
+    ├── Tracks per-player water prerequisite state
     └── Runs action completion timer and rotates to next task
 
 [Map watcher — /scripts/map-watcher.js]
     └── Watches /public/assets/ for .tmj changes, calls back with filename
+
+[Map nav loader — /scripts/map-nav.js]
+    └── Reads basemap2.tmj and builds blocked grid cells for server collisions
 
 [Display — /public/server.html]
     └── Phaser 3 game view: loads Tiled map, renders players, hot-reloads on reload_map
@@ -67,6 +72,7 @@ gorockit-jam/
 ├── scripts/
 │   ├── dev.js                 # Dev startup script (prints LAN URLs, starts server)
 │   ├── actions.js             # Action assignment + interaction/timer logic
+│   ├── map-nav.js             # TMJ parser for blocked cells and grid dimensions
 │   ├── movement.js            # Movement rules (directions, bounds, collisions)
 │   ├── websocket.js           # WebSocket setup + game state logic + map hot-reload
 │   └── map-watcher.js         # fs.watch wrapper for .tmj files in public/assets/
@@ -110,7 +116,7 @@ All messages are JSON.
 ## Grid
 
 - Tile size: `32px`
-- Grid dimensions: `20 × 15` tiles
+- Grid dimensions: loaded from `public/assets/basemap2.tmj` (currently `30 × 20`)
 - Movement is discrete — players snap to grid cells, no interpolation
 
 ---
@@ -123,6 +129,15 @@ All messages are JSON.
 - The display (`server.html`) only renders what it receives — no local simulation.
 - Players choose a name and character (red/blue/white/yellow) in the lobby before connecting. Server honours the preference if the character is free, otherwise assigns the first available one.
 - Max 4 players (limited by color array).
+
+## Action Flow (Current)
+
+- Cooperative loop currently has 2 actions only:
+    1) `fetch_water` at the well
+    2) `water_plants` at the potager
+- `fetch_water` requires the actor to be adjacent to the well.
+- `water_plants` requires the actor to have completed `fetch_water` first.
+- Water state is tracked server-side per player.
 
 ---
 

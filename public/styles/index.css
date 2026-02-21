@@ -164,7 +164,10 @@ body {
   font-size: 14px;
   color: #ddd;
 }
-
+#player-position {
+  font-size: 14px;
+  color: #fff;
+}
 #btn-interact {
   background: #4a4a8a;
   border: 2px solid #aaa;

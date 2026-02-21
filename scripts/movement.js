@@ -46,6 +46,25 @@ function applyPlayerMove(player, direction, context) {
   const targetX = clamp(player.gridX + delta.x, 0, gridCols - 1);
   const targetY = clamp(player.gridY + delta.y, 0, gridRows - 1);
 
+  const isDiagonal = delta.x !== 0 && delta.y !== 0;
+  if (isDiagonal && blockedCells) {
+    const sideAX = player.gridX + delta.x;
+    const sideAY = player.gridY;
+    const sideBX = player.gridX;
+    const sideBY = player.gridY + delta.y;
+    if (
+      blockedCells.has(toCellKey(sideAX, sideAY)) ||
+      blockedCells.has(toCellKey(sideBX, sideBY))
+    ) {
+      return {
+        moved: false,
+        gridX: player.gridX,
+        gridY: player.gridY,
+        reason: 'blocked_corner',
+      };
+    }
+  }
+
   if (blockedCells && blockedCells.has(toCellKey(targetX, targetY))) {
     return {
       moved: false,

@@ -7,14 +7,11 @@
   <link rel="stylesheet" href="/styles/index.css" />
 </head>
 <body>
-
-  <!-- ── LOBBY ── -->
   <div id="lobby">
     <h1 id="lobby-title">Cacaotique</h1>
 
     <label for="name-input" class="lobby-label">Ton nom</label>
-    <input id="name-input" type="text" maxlength="16" placeholder="Entrer un nom…"
-           autocomplete="off" autocorrect="off" spellcheck="false" />
+    <input id="name-input" type="text" maxlength="16" placeholder="Entrer un nom…" autocomplete="off" autocorrect="off" spellcheck="false" />
 
     <p class="lobby-label">Choisis ton personnage</p>
     <div id="character-grid">
@@ -39,7 +36,6 @@
     <button id="btn-enter" disabled>Rejoindre</button>
   </div>
 
-  <!-- ── GAME ── -->
   <div id="game">
     <div id="info">connecting…</div>
     <div id="dot"></div>
@@ -49,6 +45,7 @@
       <div id="action-title">—</div>
       <div id="action-target">—</div>
       <div id="action-timer">—</div>
+      <div id="player-position">Position: —</div>
       <button id="btn-interact" type="button">Interagir</button>
     </div>
 
@@ -62,23 +59,20 @@
   </div>
 
   <script>
-    // ── Lobby logic ──────────────────────────────────────────────────────────
-    const lobbyEl       = document.getElementById('lobby');
-    const gameEl        = document.getElementById('game');
-    const nameInputEl   = document.getElementById('name-input');
-    const charBtns      = document.querySelectorAll('.char-btn');
-    const btnEnterEl    = document.getElementById('btn-enter');
+    const lobbyEl = document.getElementById('lobby');
+    const gameEl = document.getElementById('game');
+    const nameInputEl = document.getElementById('name-input');
+    const charBtns = document.querySelectorAll('.char-btn');
+    const btnEnterEl = document.getElementById('btn-enter');
 
     let selectedChar = null;
 
-    // Restore saved values
     const savedName = localStorage.getItem('cacao_name');
     const savedChar = localStorage.getItem('cacao_char');
     if (savedName) nameInputEl.value = savedName;
-    if (savedChar) selectChar(savedChar);
 
     function selectChar(char) {
-      charBtns.forEach(b => b.classList.toggle('selected', b.dataset.char === char));
+      charBtns.forEach(button => button.classList.toggle('selected', button.dataset.char === char));
       selectedChar = char;
       updateEnterBtn();
     }
@@ -87,10 +81,11 @@
       btnEnterEl.disabled = !(nameInputEl.value.trim().length > 0 && selectedChar);
     }
 
-    charBtns.forEach(btn => {
-      btn.addEventListener('click', () => selectChar(btn.dataset.char));
+    charBtns.forEach(button => {
+      button.addEventListener('click', () => selectChar(button.dataset.char));
     });
 
+    if (savedChar) selectChar(savedChar);
     nameInputEl.addEventListener('input', updateEnterBtn);
 
     btnEnterEl.addEventListener('click', () => {
@@ -102,22 +97,61 @@
       startGame(name, selectedChar);
     });
 
-    // ── Game logic ───────────────────────────────────────────────────────────
-    const infoEl        = document.getElementById('info');
-    const dotEl         = document.getElementById('dot');
-    const statusEl      = document.getElementById('status');
-    const joystickEl    = document.getElementById('joystick');
-    const joystickBaseEl  = document.getElementById('joystick-base');
+    const infoEl = document.getElementById('info');
+    const dotEl = document.getElementById('dot');
+    const statusEl = document.getElementById('status');
+    const joystickEl = document.getElementById('joystick');
+    const joystickBaseEl = document.getElementById('joystick-base');
     const joystickStickEl = document.getElementById('joystick-stick');
-    const actionRoleEl  = document.getElementById('action-role');
+    const actionRoleEl = document.getElementById('action-role');
     const actionTitleEl = document.getElementById('action-title');
     const actionTargetEl = document.getElementById('action-target');
     const actionTimerEl = document.getElementById('action-timer');
+    const playerPositionEl = document.getElementById('player-position');
     const interactBtnEl = document.getElementById('btn-interact');
 
     let myId = null;
-    let myColor = null;
     let currentAction = null;
+
+    function getMyRole(action) {
+      if (!myId || !action) return 'none';
+      if (action.requesterId === myId) return 'requester';
+      if (action.actorId === myId) return 'actor';
+      return 'spectator';
+    }
+
+    function renderAction() {
+      if (!currentAction) {
+        actionRoleEl.textContent = 'En attente d\'action…';
+        actionTitleEl.textContent = '—';
+        actionTargetEl.textContent = '—';
+        actionTimerEl.textContent = '—';
+        interactBtnEl.disabled = true;
+        return;
+      }
+
+      const role = getMyRole(currentAction);
+      if (role === 'requester') {
+        actionRoleEl.textContent = `Tu demandes au joueur ${currentAction.actorId} :`;
+      } else if (role === 'actor') {
+        actionRoleEl.textContent = 'Action à faire :';
+      } else {
+        actionRoleEl.textContent = `Action en cours (joueur ${currentAction.actorId})`;
+      }
+
+      actionTitleEl.textContent = currentAction.title;
+      actionTargetEl.textContent = `Lieu: ${currentAction.targetName} (${currentAction.gridX}, ${currentAction.gridY})`;
+
+      if (currentAction.status === 'in_progress' && currentAction.startedAt) {
+        const elapsed = Date.now() - currentAction.startedAt;
+        const remainingMs = Math.max(0, currentAction.durationMs - elapsed);
+        actionTimerEl.textContent = `Timer: ${(remainingMs / 1000).toFixed(1)}s`;
+      } else {
+        actionTimerEl.textContent = `Timer: ${(currentAction.durationMs / 1000).toFixed(1)}s`;
+      }
+
+      interactBtnEl.disabled = currentAction.status !== 'pending';
+    }
 
     function startGame(name, character) {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -133,15 +167,21 @@
         infoEl.textContent = 'connexion perdue';
       };
 
-      ws.onmessage = (e) => {
-        const msg = JSON.parse(e.data);
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
 
         if (msg.type === 'init') {
           myId = msg.id;
-          myColor = msg.color;
           infoEl.textContent = msg.name || `Joueur ${myId}`;
-          dotEl.style.background = myColor;
+          dotEl.style.background = msg.color;
           statusEl.textContent = 'prêt';
+        }
+
+        if (msg.type === 'state' && myId) {
+          const me = msg.players.find(player => player.id === myId);
+          if (me) {
+            playerPositionEl.textContent = `Position: (${me.gridX}, ${me.gridY})`;
+          }
         }
 
         if (msg.type === 'action_update') {
@@ -164,47 +204,7 @@
         ws.send(JSON.stringify({ type: 'interact' }));
       }
 
-      function getMyRole(action) {
-        if (!myId || !action) return 'none';
-        if (action.requesterId === myId) return 'requester';
-        if (action.actorId === myId) return 'actor';
-        return 'spectator';
-      }
-
-      function renderAction() {
-        if (!currentAction) {
-          actionRoleEl.textContent = 'En attente d\'action…';
-          actionTitleEl.textContent = '—';
-          actionTargetEl.textContent = '—';
-          actionTimerEl.textContent = '—';
-          interactBtnEl.disabled = true;
-          return;
-        }
-
-        const role = getMyRole(currentAction);
-        if (role === 'requester') {
-          actionRoleEl.textContent = `Tu demandes au joueur ${currentAction.actorId} :`;
-        } else if (role === 'actor') {
-          actionRoleEl.textContent = 'Action à faire :';
-        } else {
-          actionRoleEl.textContent = `Action en cours (joueur ${currentAction.actorId})`;
-        }
-
-        actionTitleEl.textContent = currentAction.title;
-        actionTargetEl.textContent = `Lieu: ${currentAction.targetName} (${currentAction.gridX}, ${currentAction.gridY})`;
-
-        if (currentAction.status === 'in_progress' && currentAction.startedAt) {
-          const elapsed = Date.now() - currentAction.startedAt;
-          const remainingMs = Math.max(0, currentAction.durationMs - elapsed);
-          actionTimerEl.textContent = `Timer: ${(remainingMs / 1000).toFixed(1)}s`;
-        } else {
-          actionTimerEl.textContent = `Timer: ${(currentAction.durationMs / 1000).toFixed(1)}s`;
-        }
-
-        interactBtnEl.disabled = !(role === 'actor' && currentAction.status === 'pending');
-      }
-
-      const SEND_INTERVAL_MS = 400;
+      const SEND_INTERVAL_MS = 340;
       const DEAD_ZONE = 18;
       const MAX_RADIUS = 70;
       const SNAP_RADIUS = 64;
@@ -277,24 +277,24 @@
         }, SEND_INTERVAL_MS);
       }
 
-      joystickEl.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        pointerId = e.pointerId;
+      joystickEl.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        pointerId = event.pointerId;
         joystickBaseEl.classList.add('active');
         joystickEl.setPointerCapture(pointerId);
-        updateFromPointer(e.clientX, e.clientY);
+        updateFromPointer(event.clientX, event.clientY);
         if (activeDir) sendMove(activeDir);
         startSendingLoop();
       });
 
-      joystickEl.addEventListener('pointermove', (e) => {
-        if (e.pointerId !== pointerId) return;
-        e.preventDefault();
-        updateFromPointer(e.clientX, e.clientY);
+      joystickEl.addEventListener('pointermove', (event) => {
+        if (event.pointerId !== pointerId) return;
+        event.preventDefault();
+        updateFromPointer(event.clientX, event.clientY);
       });
 
-      function stopPointer(e) {
-        if (e.pointerId !== pointerId) return;
+      function stopPointer(event) {
+        if (event.pointerId !== pointerId) return;
         if (joystickEl.hasPointerCapture(pointerId)) {
           joystickEl.releasePointerCapture(pointerId);
         }
@@ -304,8 +304,8 @@
 
       joystickEl.addEventListener('pointerup', stopPointer);
       joystickEl.addEventListener('pointercancel', stopPointer);
-      joystickEl.addEventListener('pointerleave', (e) => {
-        if (e.pointerId !== pointerId) return;
+      joystickEl.addEventListener('pointerleave', (event) => {
+        if (event.pointerId !== pointerId) return;
         resetJoystick();
       });
 

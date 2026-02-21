@@ -1,95 +1,27 @@
-const ACTION_LIBRARY = [
-  {
-    key: 'feed_animals',
-    title: 'Nourrir les animaux',
-    description: 'Apporte de la nourriture au bétail.',
-    targetName: 'Enclos',
-    gridX: 3,
-    gridY: 3,
-    durationMs: 4000,
-  },
-  {
-    key: 'water_plants',
-    title: 'Arroser les plantes',
-    description: 'Arrose les plants pour les sauver.',
-    targetName: 'Potager',
-    gridX: 8,
-    gridY: 4,
-    durationMs: 3500,
-  },
-  {
-    key: 'extinguish_fire',
-    title: 'Éteindre le feu',
-    description: 'Le feu prend ! Va l’éteindre.',
-    targetName: 'Cuisine',
-    gridX: 12,
-    gridY: 7,
-    durationMs: 5000,
-  },
-  {
-    key: 'collect_eggs',
-    title: 'Ramasser les œufs',
-    description: 'Collecte les œufs avant qu’ils cassent.',
-    targetName: 'Pondoir',
-    gridX: 5,
-    gridY: 9,
-    durationMs: 3000,
-  },
-  {
-    key: 'repair_fence',
-    title: 'Réparer la clôture',
-    description: 'Une barrière est ouverte.',
-    targetName: 'Clôture',
-    gridX: 1,
-    gridY: 10,
-    durationMs: 4500,
-  },
-  {
-    key: 'chop_cacao',
-    title: 'Couper des cabosses',
-    description: 'Prépare des cabosses de cacao.',
-    targetName: 'Cacaoyer',
-    gridX: 15,
-    gridY: 3,
-    durationMs: 4200,
-  },
-  {
-    key: 'grind_beans',
-    title: 'Moudre les fèves',
-    description: 'Active le moulin à fèves.',
-    targetName: 'Moulin',
-    gridX: 16,
-    gridY: 10,
-    durationMs: 3800,
-  },
-  {
-    key: 'stir_pot',
-    title: 'Mélanger la marmite',
-    description: 'Brasse avant que ça brûle.',
-    targetName: 'Marmite',
-    gridX: 10,
-    gridY: 12,
-    durationMs: 3600,
-  },
-  {
-    key: 'clean_stable',
-    title: 'Nettoyer l’écurie',
-    description: 'Un peu de ménage urgent.',
-    targetName: 'Écurie',
-    gridX: 6,
-    gridY: 13,
-    durationMs: 4300,
-  },
-  {
-    key: 'refill_well',
-    title: 'Remplir le puits',
-    description: 'Le puits est presque vide.',
+const ACTION_LIBRARY = {
+  fetch_water: {
+    key: 'fetch_water',
+    title: 'Aller chercher de l’eau',
+    description: 'Place-toi à côté du puits puis interagis.',
     targetName: 'Puits',
     gridX: 18,
     gridY: 6,
-    durationMs: 3400,
+    durationMs: 2500,
+    requiresWater: false,
+    grantsWater: true,
   },
-];
+  water_plants: {
+    key: 'water_plants',
+    title: 'Arroser les plantes',
+    description: 'Arrose le potager (nécessite d’avoir pris de l’eau).',
+    targetName: 'Potager',
+    gridX: 8,
+    gridY: 4,
+    durationMs: 3000,
+    requiresWater: true,
+    grantsWater: false,
+  },
+};
 
 function randomItem(items) {
   return items[Math.floor(Math.random() * items.length)];
@@ -102,17 +34,32 @@ function pickRequesterAndActor(playerIds) {
   return { requesterId, actorId };
 }
 
+function isAdjacentOrSame(player, x, y) {
+  return Math.abs(player.gridX - x) <= 1 && Math.abs(player.gridY - y) <= 1;
+}
+
+function isAdjacent8(player, x, y) {
+  const dx = Math.abs(player.gridX - x);
+  const dy = Math.abs(player.gridY - y);
+  return Math.max(dx, dy) === 1;
+}
+
 function createActionManager(options = {}) {
   const {
     actionLibrary = ACTION_LIBRARY,
     minPlayers = 2,
+    stations = {},
     onActionChange = () => {},
     onActionResult = () => {},
   } = options;
 
+  const wellStation = stations.well || { x: actionLibrary.fetch_water.gridX, y: actionLibrary.fetch_water.gridY };
+  const plantsStation = stations.plants || { x: actionLibrary.water_plants.gridX, y: actionLibrary.water_plants.gridY };
+
   let currentAction = null;
   let nextActionId = 1;
   let completionTimeout = null;
+  const hasWaterByPlayer = {};
 
   function clearCompletionTimer() {
     if (completionTimeout) {
@@ -155,8 +102,24 @@ function createActionManager(options = {}) {
     }
     if (currentAction) return;
 
-    const def = randomItem(actionLibrary);
-    const { requesterId, actorId } = pickRequesterAndActor(playerIds);
+    const playersWithWater = playerIds.filter(id => Boolean(hasWaterByPlayer[id]));
+    const canWater = playersWithWater.length > 0;
+
+    let actorId;
+    let requesterId;
+
+    if (canWater) {
+      actorId = randomItem(playersWithWater);
+      const requesterPool = playerIds.filter(id => id !== actorId);
+      requesterId = randomItem(requesterPool);
+    } else {
+      const picked = pickRequesterAndActor(playerIds);
+      requesterId = picked.requesterId;
+      actorId = picked.actorId;
+    }
+
+    const def = canWater ? actionLibrary.water_plants : actionLibrary.fetch_water;
+    const station = canWater ? plantsStation : wellStation;
 
     currentAction = {
       id: nextActionId++,
@@ -164,9 +127,11 @@ function createActionManager(options = {}) {
       title: def.title,
       description: def.description,
       targetName: def.targetName,
-      gridX: def.gridX,
-      gridY: def.gridY,
+      gridX: station.x,
+      gridY: station.y,
       durationMs: def.durationMs,
+      requiresWater: def.requiresWater,
+      grantsWater: def.grantsWater,
       requesterId,
       actorId,
       status: 'pending',
@@ -178,6 +143,16 @@ function createActionManager(options = {}) {
 
   function finishAction(playersById, success, message) {
     const finishedAction = currentAction;
+
+    if (success && finishedAction) {
+      if (finishedAction.key === 'fetch_water') {
+        hasWaterByPlayer[finishedAction.actorId] = true;
+      }
+      if (finishedAction.key === 'water_plants') {
+        hasWaterByPlayer[finishedAction.actorId] = false;
+      }
+    }
+
     clearCompletionTimer();
     currentAction = null;
     onActionResult({
@@ -190,6 +165,12 @@ function createActionManager(options = {}) {
   }
 
   function handleRosterChange(playersById) {
+    for (const playerId of Object.keys(hasWaterByPlayer)) {
+      if (!playersById[playerId]) {
+        delete hasWaterByPlayer[playerId];
+      }
+    }
+
     if (!currentAction) {
       spawnAction(playersById);
       return;
@@ -236,12 +217,25 @@ function createActionManager(options = {}) {
     const actor = playersById[playerId];
     if (!actor) return;
 
-    const onTarget = actor.gridX === currentAction.gridX && actor.gridY === currentAction.gridY;
-    if (!onTarget) {
+    if (currentAction.requiresWater && !hasWaterByPlayer[playerId]) {
       onActionResult({
         actionId: currentAction.id,
         success: false,
-        message: `Va à ${currentAction.targetName} (${currentAction.gridX}, ${currentAction.gridY}) puis interagis.`,
+        message: 'Tu dois d’abord aller chercher de l’eau au puits.',
+      });
+      return;
+    }
+
+    const closeEnough = currentAction.key === 'fetch_water'
+      ? isAdjacent8(actor, currentAction.gridX, currentAction.gridY)
+      : isAdjacentOrSame(actor, currentAction.gridX, currentAction.gridY);
+    if (!closeEnough) {
+      onActionResult({
+        actionId: currentAction.id,
+        success: false,
+        message: currentAction.key === 'fetch_water'
+          ? `Place-toi sur une des 8 cases autour du ${currentAction.targetName} (${currentAction.gridX}, ${currentAction.gridY}) puis interagis.`
+          : `Approche-toi de ${currentAction.targetName} (${currentAction.gridX}, ${currentAction.gridY}) puis interagis.`,
       });
       return;
     }
@@ -250,8 +244,10 @@ function createActionManager(options = {}) {
     currentAction.startedAt = Date.now();
     emitActionChange();
 
+    const finishedTitle = currentAction.title;
+
     completionTimeout = setTimeout(() => {
-      finishAction(playersById, true, `Action réussie: ${currentAction ? currentAction.title : 'terminée'}.`);
+      finishAction(playersById, true, `Action réussie: ${finishedTitle}.`);
     }, currentAction.durationMs);
   }
 
