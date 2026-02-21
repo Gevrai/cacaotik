@@ -1,6 +1,7 @@
 {
-    "activeFile": "",
+    "activeFile": "basemap2.tmj",
     "expandedProjectPaths": [
+        "."
     ],
     "fileStates": {
         "": {
@@ -25,16 +26,36 @@
                 "y": 159.81559738762968
             }
         },
-        "tilemap_packed.tsx": {
+        "basemap2.tmj": {
+            "scale": 8,
+            "selectedLayer": 2,
+            "viewCenter": {
+                "x": 246.9375,
+                "y": 152.125
+            }
+        },
+        "basemap2.tmj#tilemap_packed": {
             "scaleInDock": 1
+        },
+        "tilemap_packed.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
         }
     },
     "last.externalTilesetPath": "/home/gejora/Documents/gorockit-jam/public/assets",
     "last.imagePath": "/home/gejora/Documents/gorockit-jam/public/assets",
     "openFiles": [
+        "basemap1.tmj",
+        "basemap1.tmx",
+        "tilemap_packed.tsx",
+        "basemap2.tmj"
     ],
     "project": "map.tiled-project",
     "recentFiles": [
+        "basemap1.tmj",
+        "basemap1.tmx",
+        "tilemap_packed.tsx",
+        "basemap2.tmj"
     ],
     "tileset.lastUsedFormat": "tsx",
     "tileset.tileSize": {

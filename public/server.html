@@ -96,7 +96,6 @@
         }
 
         // Fit camera to map
-        this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
         this.fitMapToViewport(map.widthInPixels, map.heightInPixels);
         this.scale.on('resize', () => {
           this.fitMapToViewport(map.widthInPixels, map.heightInPixels);
@@ -107,9 +106,10 @@
 
       fitMapToViewport(mapWidth, mapHeight) {
         const cam = this.cameras.main;
-        const zoomX = cam.width / mapWidth;
-        const zoomY = cam.height / mapHeight;
-        cam.setZoom(Math.max(zoomX, zoomY));
+        const padding = 24; // border inset in pixels
+        const zoomX = (cam.width - padding * 2) / mapWidth;
+        const zoomY = (cam.height - padding * 2) / mapHeight;
+        cam.setZoom(Math.min(zoomX, zoomY));
         cam.centerOn(mapWidth / 2, mapHeight / 2);
       }
 
@@ -179,12 +179,12 @@
       width: window.innerWidth,
       height: window.innerHeight,
       backgroundColor: '#1a1a2e',
+      pixelArt: true,
       scene: [GameScene],
       parent: 'game',
       scale: {
         mode: Phaser.Scale.RESIZE,
-        width: window.innerWidth,
-        height: window.innerHeight,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
       },
     };
 
