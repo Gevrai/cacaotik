@@ -524,6 +524,7 @@ function createActionManager(options = {}) {
 
     onActionResult({
       actionId: actionId || null,
+      actionKey: finishedAction ? finishedAction.key : null,
       success,
       message,
       playerId,

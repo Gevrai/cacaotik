@@ -141,6 +141,18 @@
     let activeAction = null;
     let actionsByKey = {};
 
+    const sounds = {
+      bees: new Audio('/assets/ost/Bees.mp3'),
+      success: new Audio('/assets/ost/Success.mp3'),
+    };
+
+    function playSound(key) {
+      const snd = sounds[key];
+      if (!snd) return;
+      snd.currentTime = 0;
+      snd.play().catch(() => {});
+    }
+
     function updateMyActionFromSnapshot() {
       if (!myId) return;
       const myActions = actionsByKey;
@@ -286,6 +298,7 @@
 
         if (msg.type === 'action_result') {
           if (!msg.playerId || msg.playerId === myId) {
+            if (msg.success && msg.actionKey === 'harvest_cacao') playSound('success');
             statusEl.textContent = msg.message || 'action update';
             if (typeof msg.hasWater === 'boolean') {
               playerWaterEl.textContent = `Eau: ${msg.hasWater ? 'Oui' : 'Non'}`;
@@ -418,6 +431,7 @@
       actionBtnEls.forEach(button => {
         button.addEventListener('click', () => {
           const actionKey = button.dataset.action;
+          if (actionKey === 'talk_bees') playSound('bees');
           sendInteract(actionKey);
         });
       });
