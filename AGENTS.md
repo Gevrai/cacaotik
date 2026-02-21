@@ -41,6 +41,7 @@ Cacaotique is a chaotic co-op farming/cooking game for a 6h game jam.
 |-----|---------|
 | `http://<LAN-IP>:3000/` | Mobile controller (players open this on their phones) |
 | `http://localhost:3000/server.html` | Game display (shown on TV/shared screen) |
+| `http://localhost:3000/connect-info` | Returns mobile URL + QR code payload for display overlay |
 
 ---
 

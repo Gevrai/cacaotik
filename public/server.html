@@ -8,6 +8,10 @@
 <body>
   <div id="status">connecting…</div>
   <canvas id="game"></canvas>
+  <div id="connect-panel">
+    <img id="connect-qr" alt="QR code to connect controllers" />
+    <div id="connect-url">loading…</div>
+  </div>
   <script>
     const GRID_SIZE = 32;
     const GRID_COLS = 20;
@@ -67,6 +71,20 @@
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}`);
     const statusEl = document.getElementById('status');
+    const connectQrEl = document.getElementById('connect-qr');
+    const connectUrlEl = document.getElementById('connect-url');
+
+    async function loadConnectInfo() {
+      try {
+        const response = await fetch('/connect-info');
+        if (!response.ok) throw new Error('Failed to load connect info');
+        const data = await response.json();
+        connectQrEl.src = data.qrDataUrl;
+        connectUrlEl.textContent = data.connectUrl;
+      } catch {
+        connectUrlEl.textContent = `${location.origin}/`;
+      }
+    }
 
     ws.onopen = () => { statusEl.textContent = 'display connected'; };
     ws.onclose = () => { statusEl.textContent = 'disconnected'; };
@@ -86,6 +104,7 @@
 
     // Initial render (empty grid)
     render();
+    loadConnectInfo();
   </script>
 </body>
 </html>
