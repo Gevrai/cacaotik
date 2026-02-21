@@ -13,7 +13,9 @@
       <li>planter une graine</li>
       <li>chercher de l'eau</li>
       <li>arroser la plante</li>
-      <li>recolter la plante</li>
+      <li>parler aux abeilles</li>
+      <li>recolter le cacao</li>
+      <li>mettre le feu</li>
       <li>...</li>
     </ul>
   </div>
@@ -43,7 +45,9 @@
     // ── Shared state (updated by WebSocket, read by Phaser scene) ──────────
     let players = {};
     let plants = [];
+    let beeFlights = [];
     let inProgressByPlayer = {};
+      let fireBursts = [];
     let mapCacheBust = Date.now();
     const statusEl = document.getElementById('status');
 
@@ -64,6 +68,7 @@
         this.load.image('tilemap_packed', '/assets/tilemap_packed.png?t=' + mapCacheBust);
         this.load.image('cacao_plant', '/assets/tiles/tile_0152_cacaotier0.png?t=' + mapCacheBust);
         this.load.image('cacao_plant_watered', '/assets/tiles/tile_0150_cacaotier1.png?t=' + mapCacheBust);
+        this.load.image('cacao_plant_blossom', '/assets/tiles/tile_0151_cacaotier2.png?t=' + mapCacheBust);
 
         // Character spritesheets — 96×24px, 4 frames of 24×24
         const t = mapCacheBust;
@@ -283,6 +288,8 @@
         this._local = {};    // id → { x, y } — client-extrapolated pixel positions (display scale)
         this._progressBars = {}; // id -> { bg, fill }
         this._plantSprites = {}; // id -> Phaser.GameObjects.Image
+        this._flightBees = {}; // id -> Phaser.GameObjects.Graphics
+        this._fireBursts = {}; // id -> Phaser.GameObjects.Graphics
       }
 
       update(time, delta) {
@@ -348,6 +355,76 @@
 
         const activeIds = new Set(Object.keys(players));
         const activePlantIds = new Set(plants.map(plant => String(plant.id)));
+        const activeFlightIds = new Set(beeFlights.map(flight => String(flight.id)));
+        const activeFireIds = new Set(fireBursts.map(burst => String(burst.id)));
+
+        for (const flight of beeFlights) {
+          const flightId = String(flight.id);
+          if (!this._flightBees[flightId]) {
+            const bee = this.add.graphics();
+            bee.fillStyle(0xf5c518, 1);
+            bee.fillEllipse(0, 0, 2.8, 2.2);
+            bee.fillStyle(0x3a2800, 1);
+            bee.fillRect(-0.5, -0.8, 0.5, 1.6);
+            bee.fillRect(0.4, -0.8, 0.5, 1.6);
+            bee.setDepth(18);
+            this._flightBees[flightId] = bee;
+          }
+
+          const elapsed = Date.now() - flight.startedAt;
+          const ratio = Math.max(0, Math.min(1, elapsed / flight.durationMs));
+          const legRatio = ratio <= 0.5 ? ratio * 2 : (1 - ratio) * 2;
+          const targetX = flight.targetGridX * DISPLAY_GRID + DISPLAY_GRID / 2;
+          const targetY = flight.targetGridY * DISPLAY_GRID + DISPLAY_GRID / 2;
+          const x = this._hiveX + (targetX - this._hiveX) * legRatio;
+          const yLinear = this._hiveY + (targetY - this._hiveY) * legRatio;
+          const arc = Math.sin(legRatio * Math.PI) * -8;
+          this._flightBees[flightId].setPosition(x, yLinear + arc);
+        }
+
+        for (const flightId of Object.keys(this._flightBees)) {
+          if (!activeFlightIds.has(flightId)) {
+            this._flightBees[flightId].destroy();
+            delete this._flightBees[flightId];
+          }
+        }
+
+        for (const burst of fireBursts) {
+          const burstId = String(burst.id);
+          if (!this._fireBursts[burstId]) {
+            const gfx = this.add.graphics();
+            gfx.setDepth(19);
+            this._fireBursts[burstId] = gfx;
+          }
+
+          const gfx = this._fireBursts[burstId];
+          const elapsed = Date.now() - burst.startedAt;
+          const ratio = Math.max(0, Math.min(1, elapsed / burst.durationMs));
+          const centerX = burst.targetGridX * DISPLAY_GRID + DISPLAY_GRID / 2;
+          const centerY = burst.targetGridY * DISPLAY_GRID + DISPLAY_GRID / 2;
+          const radius = 4 + ratio * 8;
+
+          gfx.clear();
+          gfx.fillStyle(0xff7a00, 0.55 * (1 - ratio));
+          for (let i = 0; i < 12; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = Math.random() * radius;
+            gfx.fillCircle(centerX + Math.cos(a) * r, centerY - 1 + Math.sin(a) * r, 1.5);
+          }
+          gfx.fillStyle(0xffd147, 0.5 * (1 - ratio));
+          for (let i = 0; i < 8; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = Math.random() * (radius * 0.6);
+            gfx.fillCircle(centerX + Math.cos(a) * r, centerY - 2 + Math.sin(a) * r, 1.2);
+          }
+        }
+
+        for (const burstId of Object.keys(this._fireBursts)) {
+          if (!activeFireIds.has(burstId)) {
+            this._fireBursts[burstId].destroy();
+            delete this._fireBursts[burstId];
+          }
+        }
 
         for (const plant of plants) {
           const plantId = String(plant.id);
@@ -355,13 +432,17 @@
           const plantY = plant.gridY * DISPLAY_GRID + DISPLAY_GRID / 2;
 
           if (!this._plantSprites[plantId]) {
-            const textureKey = plant.watered ? 'cacao_plant_watered' : 'cacao_plant';
+            const textureKey = plant.stage >= 2
+              ? 'cacao_plant_blossom'
+              : (plant.stage >= 1 ? 'cacao_plant_watered' : 'cacao_plant');
             const plantSprite = this.add.image(plantX, plantY, textureKey);
             plantSprite.setDisplaySize(DISPLAY_GRID, DISPLAY_GRID);
             this._plantSprites[plantId] = plantSprite;
           }
 
-          const textureKey = plant.watered ? 'cacao_plant_watered' : 'cacao_plant';
+          const textureKey = plant.stage >= 2
+            ? 'cacao_plant_blossom'
+            : (plant.stage >= 1 ? 'cacao_plant_watered' : 'cacao_plant');
           this._plantSprites[plantId].setTexture(textureKey);
           this._plantSprites[plantId].setPosition(plantX, plantY);
         }
@@ -516,6 +597,8 @@
       if (msg.type === 'action_update') {
         inProgressByPlayer = msg.inProgressByPlayer || {};
         plants = msg.plants || [];
+        beeFlights = msg.beeFlights || [];
+        fireBursts = msg.fireBursts || [];
       }
 
       if (msg.type === 'reload_map') {

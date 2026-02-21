@@ -50,6 +50,9 @@
         <button class="action-btn" data-action="plant_seed" type="button">Planter une graine</button>
         <button class="action-btn" data-action="fetch_water" type="button">Prendre de l'eau</button>
         <button class="action-btn" data-action="water_plants" type="button">Arroser</button>
+        <button class="action-btn" data-action="talk_bees" type="button">Parler aux abeilles</button>
+        <button class="action-btn" data-action="harvest_cacao" type="button">Récolter le cacao</button>
+        <button class="action-btn" data-action="burn_tree" type="button">Mettre le feu</button>
       </div>
       <div id="player-position">Position: —</div>
       <div id="player-water">Eau: Non</div>
@@ -147,7 +150,10 @@
         const blockedReason =
           getActionFromKey('plant_seed')?.blockedReason
           || getActionFromKey('fetch_water')?.blockedReason
-          || getActionFromKey('water_plants')?.blockedReason;
+          || getActionFromKey('water_plants')?.blockedReason
+          || getActionFromKey('talk_bees')?.blockedReason
+          || getActionFromKey('harvest_cacao')?.blockedReason
+          || getActionFromKey('burn_tree')?.blockedReason;
         actionRoleEl.textContent = blockedReason || 'Choisis une action';
         actionTimerEl.textContent = '—';
         actionProgressEl.classList.remove('visible');

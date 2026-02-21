@@ -99,7 +99,7 @@ All messages are JSON.
 | `join` | `name: string, character: "red"\|"blue"\|"white"\|"yellow"` | First message after connect; registers the player with name + preferred character |
 | `move` | `dir: "up"\|"down"\|"left"\|"right"\|"up-left"\|"up-right"\|"down-left"\|"down-right"` | Set player velocity in given direction (sent once on direction change) |
 | `stop` | _(none)_ | Zero player velocity (sent on joystick release) |
-| `interact` | `key: "plant_seed"\|"fetch_water"\|"water_plants"` | Attempt the selected action button |
+| `interact` | `key: "plant_seed"\|"fetch_water"\|"water_plants"\|"talk_bees"\|"harvest_cacao"\|"burn_tree"` | Attempt the selected action button |
 
 ### Server → Client (broadcast to all)
 
@@ -107,7 +107,7 @@ All messages are JSON.
 |--------|--------|-------------|
 | `init` | `id, name, character, color, x, y, gridX, gridY, gridSize, gridCols, gridRows` | Sent once after `join` to the joining client with assigned character/color |
 | `state` | `players: [{id, name, character, color, x, y, gridX, gridY}]` | Full player state, broadcast by game loop (~20fps) while any player is moving |
-| `action_update` | `actionsByPlayer: { [playerId]: { plant_seed, fetch_water, water_plants, activeAction } }, inProgressByPlayer: { [playerId]: action }, hasWaterByPlayer: { [playerId]: boolean }, plants: [{id,gridX,gridY,watered}], serverTime` | Per-player action buttons state + active progress + world farming state |
+| `action_update` | `actionsByPlayer: { [playerId]: { plant_seed, fetch_water, water_plants, talk_bees, harvest_cacao, burn_tree, activeAction } }, inProgressByPlayer: { [playerId]: action }, hasWaterByPlayer: { [playerId]: boolean }, plants: [{id,gridX,gridY,stage}], beeFlights: [{id,targetGridX,targetGridY,startedAt,durationMs}], fireBursts: [{id,targetGridX,targetGridY,startedAt,durationMs}], serverTime` | Per-player action buttons state + active progress + world farming state |
 | `action_result` | `actionId, success, message, playerId` | Result/feedback after interact attempts or completion (includes concerned player) |
 | `reload_map` | `file: string` | Sent when a .tmj file changes; display restarts its Phaser scene |
 
@@ -134,9 +134,12 @@ All messages are JSON.
 
 ## Action Flow (Current)
 
-- Mobile shows 3 explicit buttons (`plant_seed`, `fetch_water`, `water_plants`) that are disabled when conditions are not met.
+- Mobile shows 6 explicit buttons (`plant_seed`, `fetch_water`, `water_plants`, `talk_bees`, `harvest_cacao`, `burn_tree`) that are disabled when conditions are not met.
 - Brown zone (`x:2..10`, `y:8..14`) enables planting; planting creates a plant at player position.
-- Watering requires both proximity to a planted tile and player water state.
+- Watering requires both proximity to a stage-0 plant and player water state.
+- Talking to bees requires proximity to the hive and at least one stage-1 plant; bees fly from hive to plant then back, and plant becomes stage-2.
+- Harvesting cacao requires proximity to a stage-2 plant and turns it into stage-3.
+- Burning requires proximity to a stage-3 plant and triggers fire particles.
 - `interact` starts a 3s progress for that player; moving out of valid range cancels progress.
 - Active action progress is rendered above the corresponding player on display.
 

@@ -17,6 +17,24 @@ const ACTION_LIBRARY = {
     targetName: 'Plante',
     durationMs: 3000,
   },
+  talk_bees: {
+    key: 'talk_bees',
+    title: 'Parler aux abeilles',
+    targetName: 'Ruche',
+    durationMs: 3000,
+  },
+  harvest_cacao: {
+    key: 'harvest_cacao',
+    title: 'Récolter le cacao',
+    targetName: 'Cacaotier mûr',
+    durationMs: 3000,
+  },
+  burn_tree: {
+    key: 'burn_tree',
+    title: 'Mettre le feu',
+    targetName: 'Arbre récolté',
+    durationMs: 3000,
+  },
 };
 
 const BROWN_ZONE = {
@@ -51,16 +69,21 @@ function createActionManager(options = {}) {
 
   const stationByKey = {
     well: stations.well || { x: 15, y: 2 },
+    hive: stations.hive || { x: 4, y: 18 },
   };
   const brownZone = stations.brownZone || BROWN_ZONE;
 
   const inProgressByPlayer = {};
   const completionTimeoutByPlayer = {};
   const hasWaterByPlayer = {};
+  const beeFlights = [];
+  const fireBursts = [];
   let playersSnapshot = {};
 
   let nextActionId = 1;
   let nextPlantId = 1;
+  let nextBeeFlightId = 1;
+  let nextFireBurstId = 1;
   const plants = [];
 
   function clearCompletionTimer(playerId) {
@@ -70,17 +93,57 @@ function createActionManager(options = {}) {
     }
   }
 
+  function cleanupTemporalEvents(now = Date.now()) {
+    for (let index = beeFlights.length - 1; index >= 0; index -= 1) {
+      const flight = beeFlights[index];
+      if (now >= flight.startedAt + flight.durationMs) {
+        beeFlights.splice(index, 1);
+      }
+    }
+
+    for (let index = fireBursts.length - 1; index >= 0; index -= 1) {
+      const burst = fireBursts[index];
+      if (now >= burst.startedAt + burst.durationMs) {
+        fireBursts.splice(index, 1);
+      }
+    }
+  }
+
   function getPlantAt(x, y) {
     return plants.find(plant => plant.gridX === x && plant.gridY === y) || null;
   }
 
-  function getNearestPlantForPlayer(player) {
+  function getNearestPlantForPlayer(player, options = {}) {
+    const {
+      stageEquals = null,
+      stageAtMost = null,
+    } = options;
+
     for (const plant of plants) {
+      if (stageEquals !== null && plant.stage !== stageEquals) continue;
+      if (stageAtMost !== null && plant.stage > stageAtMost) continue;
       if (isAdjacent8(player, plant.gridX, plant.gridY) || (player.gridX === plant.gridX && player.gridY === plant.gridY)) {
         return plant;
       }
     }
     return null;
+  }
+
+  function getNearestPlantToPoint(x, y, options = {}) {
+    const { stageEquals = null } = options;
+    let nearest = null;
+    let bestDistance = Infinity;
+
+    for (const plant of plants) {
+      if (stageEquals !== null && plant.stage !== stageEquals) continue;
+      const distance = Math.abs(plant.gridX - x) + Math.abs(plant.gridY - y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        nearest = plant;
+      }
+    }
+
+    return nearest;
   }
 
   function toAction(def, extras = {}) {
@@ -134,7 +197,7 @@ function createActionManager(options = {}) {
   }
 
   function getWaterPlantsAction(playerId, player) {
-    const targetPlant = getNearestPlantForPlayer(player);
+    const targetPlant = getNearestPlantForPlayer(player, { stageAtMost: 0 });
     const hasWater = Boolean(hasWaterByPlayer[playerId]);
     const canInteract = Boolean(targetPlant) && hasWater;
 
@@ -144,8 +207,52 @@ function createActionManager(options = {}) {
       gridY: targetPlant ? targetPlant.gridY : null,
       canInteract,
       blockedReason: !targetPlant
-        ? 'Approche-toi d’une plante.'
+        ? 'Approche-toi d’une plante à arroser.'
         : (!hasWater ? 'Tu dois d’abord prendre de l’eau au puits.' : null),
+    });
+  }
+
+  function getTalkBeesAction(playerId, player) {
+    const hive = stationByKey.hive;
+    const isNearHive = isAdjacent8(player, hive.x, hive.y);
+    const targetPlant = getNearestPlantToPoint(hive.x, hive.y, { stageEquals: 1 });
+    const canInteract = isNearHive && Boolean(targetPlant);
+
+    return toAction(actionLibrary.talk_bees, {
+      actorId: playerId,
+      gridX: targetPlant ? targetPlant.gridX : null,
+      gridY: targetPlant ? targetPlant.gridY : null,
+      targetName: 'Ruche',
+      canInteract,
+      blockedReason: !isNearHive
+        ? 'Approche-toi de la ruche.'
+        : (!targetPlant ? 'Il faut une plante arrosée.' : null),
+    });
+  }
+
+  function getHarvestCacaoAction(playerId, player) {
+    const targetPlant = getNearestPlantForPlayer(player, { stageEquals: 2 });
+    const canInteract = Boolean(targetPlant);
+
+    return toAction(actionLibrary.harvest_cacao, {
+      actorId: playerId,
+      gridX: targetPlant ? targetPlant.gridX : null,
+      gridY: targetPlant ? targetPlant.gridY : null,
+      canInteract,
+      blockedReason: targetPlant ? null : 'Aucun cacaotier prêt à récolter à proximité.',
+    });
+  }
+
+  function getBurnTreeAction(playerId, player) {
+    const targetPlant = getNearestPlantForPlayer(player, { stageEquals: 3 });
+    const canInteract = Boolean(targetPlant);
+
+    return toAction(actionLibrary.burn_tree, {
+      actorId: playerId,
+      gridX: targetPlant ? targetPlant.gridX : null,
+      gridY: targetPlant ? targetPlant.gridY : null,
+      canInteract,
+      blockedReason: targetPlant ? null : 'Récolte d’abord un cacaotier pour pouvoir y mettre le feu.',
     });
   }
 
@@ -159,11 +266,16 @@ function createActionManager(options = {}) {
       plant_seed: getPlantSeedAction(playerId, player),
       fetch_water: getFetchWaterAction(playerId, player),
       water_plants: getWaterPlantsAction(playerId, player),
+      talk_bees: getTalkBeesAction(playerId, player),
+      harvest_cacao: getHarvestCacaoAction(playerId, player),
+      burn_tree: getBurnTreeAction(playerId, player),
       activeAction,
     };
   }
 
   function getPublicActionState(playersById = playersSnapshot) {
+    cleanupTemporalEvents();
+
     const actionsByPlayer = {};
     const inProgressPublicByPlayer = {};
     const hasWaterPublicByPlayer = {};
@@ -186,7 +298,21 @@ function createActionManager(options = {}) {
         id: plant.id,
         gridX: plant.gridX,
         gridY: plant.gridY,
-        watered: plant.watered,
+        stage: plant.stage,
+      })),
+      beeFlights: beeFlights.map(flight => ({
+        id: flight.id,
+        startedAt: flight.startedAt,
+        durationMs: flight.durationMs,
+        targetGridX: flight.targetGridX,
+        targetGridY: flight.targetGridY,
+      })),
+      fireBursts: fireBursts.map(burst => ({
+        id: burst.id,
+        startedAt: burst.startedAt,
+        durationMs: burst.durationMs,
+        targetGridX: burst.targetGridX,
+        targetGridY: burst.targetGridY,
       })),
     };
   }
@@ -211,15 +337,50 @@ function createActionManager(options = {}) {
             id: nextPlantId++,
             gridX: finishedAction.gridX,
             gridY: finishedAction.gridY,
-            watered: false,
+            stage: 0,
           });
         }
       }
 
       if (finishedAction.key === 'water_plants') {
         const plant = getPlantAt(finishedAction.gridX, finishedAction.gridY);
-        if (plant) plant.watered = true;
+        if (plant && plant.stage === 0) plant.stage = 1;
         hasWaterByPlayer[playerId] = false;
+      }
+
+      if (finishedAction.key === 'talk_bees') {
+        const plant = getPlantAt(finishedAction.gridX, finishedAction.gridY);
+        if (plant && plant.stage === 1) {
+          plant.stage = 2;
+          beeFlights.push({
+            id: nextBeeFlightId++,
+            startedAt: Date.now(),
+            durationMs: 4400,
+            targetGridX: plant.gridX,
+            targetGridY: plant.gridY,
+          });
+        }
+      }
+
+      if (finishedAction.key === 'harvest_cacao') {
+        const plant = getPlantAt(finishedAction.gridX, finishedAction.gridY);
+        if (plant && plant.stage === 2) {
+          plant.stage = 3;
+        }
+      }
+
+      if (finishedAction.key === 'burn_tree') {
+        const plant = getPlantAt(finishedAction.gridX, finishedAction.gridY);
+        if (plant && plant.stage === 3) {
+          plant.stage = 4;
+          fireBursts.push({
+            id: nextFireBurstId++,
+            startedAt: Date.now(),
+            durationMs: 2800,
+            targetGridX: plant.gridX,
+            targetGridY: plant.gridY,
+          });
+        }
       }
     }
 
@@ -249,9 +410,33 @@ function createActionManager(options = {}) {
 
     if (action.key === 'water_plants') {
       const plant = getPlantAt(action.gridX, action.gridY);
-      if (!plant) return false;
+      if (!plant || plant.stage !== 0) return false;
       return (
         Boolean(hasWaterByPlayer[playerId])
+        && (isAdjacent8(player, plant.gridX, plant.gridY) || (player.gridX === plant.gridX && player.gridY === plant.gridY))
+      );
+    }
+
+    if (action.key === 'talk_bees') {
+      const hive = stationByKey.hive;
+      const plant = getPlantAt(action.gridX, action.gridY);
+      return Boolean(plant && plant.stage === 1 && isAdjacent8(player, hive.x, hive.y));
+    }
+
+    if (action.key === 'harvest_cacao') {
+      const plant = getPlantAt(action.gridX, action.gridY);
+      return Boolean(
+        plant
+        && plant.stage === 2
+        && (isAdjacent8(player, plant.gridX, plant.gridY) || (player.gridX === plant.gridX && player.gridY === plant.gridY))
+      );
+    }
+
+    if (action.key === 'burn_tree') {
+      const plant = getPlantAt(action.gridX, action.gridY);
+      return Boolean(
+        plant
+        && plant.stage === 3
         && (isAdjacent8(player, plant.gridX, plant.gridY) || (player.gridX === plant.gridX && player.gridY === plant.gridY))
       );
     }
@@ -340,9 +525,11 @@ function createActionManager(options = {}) {
     emitActionChange(playersById);
 
     completionTimeoutByPlayer[playerId] = setTimeout(() => {
-      const successMessage = actionToStart.key === 'fetch_water'
-        ? 'Tu as de l’eau.'
-        : `Action réussie: ${actionToStart.title}.`;
+      let successMessage = `Action réussie: ${actionToStart.title}.`;
+      if (actionToStart.key === 'fetch_water') successMessage = 'Tu as de l’eau.';
+      if (actionToStart.key === 'talk_bees') successMessage = 'Les abeilles vont butiner puis revenir à la ruche.';
+      if (actionToStart.key === 'burn_tree') successMessage = 'Le feu prend sur l’arbre.';
+
       finishAction(
         playerId,
         playersSnapshot,
