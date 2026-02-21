@@ -1,26 +1,40 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #1a1a2e; overflow: hidden; }
-canvas { display: block; }
-#status { position: fixed; top: 8px; right: 12px; color: #aaa; font: 14px monospace; }
+#game { position: fixed; inset: 0; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#status {
+	position: fixed;
+	top: 8px;
+	left: 50%;
+	transform: translateX(-50%);
+	color: #aaa;
+	font: 12px monospace;
+	background: rgba(0, 0, 0, 0.5);
+	padding: 2px 8px;
+	border-radius: 4px;
+	z-index: 10;
+	pointer-events: none;
+}
 #connect-panel {
 	position: fixed;
-	left: 50%;
+	right: 12px;
 	bottom: 12px;
-	transform: translateX(-50%);
-	display: flex;
-	align-items: center;
-	gap: 14px;
-	padding: 12px 14px;
-	border: 1px solid #2a2a4a;
-	background: rgba(26, 26, 46, 0.92);
+	display: grid;
+	gap: 6px;
+	justify-items: end;
+	z-index: 20;
 }
 #connect-qr {
-	width: 120px;
-	height: 120px;
+	width: 145px;
+	height: 145px;
 	display: block;
 	background: #fff;
+	border: 1px solid #2a2a4a;
 }
 #connect-url {
 	color: #fff;
-	font: 18px monospace;
+	font: 12px monospace;
+	background: rgba(0, 0, 0, 0.55);
+	padding: 2px 6px;
+	border-radius: 4px;
 }

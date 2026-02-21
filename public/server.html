@@ -3,26 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <title>Cacaotique — Display</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #1a1a2e; overflow: hidden; }
-    #status {
-      position: fixed;
-      top: 8px; left: 50%;
-      transform: translateX(-50%);
-      color: #aaa;
-      font: 12px monospace;
-      background: rgba(0,0,0,0.5);
-      padding: 2px 8px;
-      border-radius: 4px;
-      z-index: 10;
-      pointer-events: none;
-    }
-  </style>
+  <link rel="stylesheet" href="/styles/server.css" />
 </head>
 <body>
   <div id="status">connecting…</div>
-  <canvas id="game"></canvas>
+  <div id="game"></div>
   <div id="connect-panel">
     <img id="connect-qr" alt="QR code to connect controllers" />
     <div id="connect-url">loading…</div>
@@ -62,33 +47,70 @@
           return;
         }
 
-        // Try to add each tileset by its Tiled "Name"; silently skip missing images
+        // Try to add each tileset by its Tiled "Name"; fallback to shared texture key
+        const resolvedTilesets = [];
         for (const ts of map.tilesets) {
           const key = ts.name;
-          if (!this.textures.exists(key)) {
-            // Try loading the tileset image dynamically (if the key matches a file)
-            console.warn(`[GameScene] texture "${key}" not preloaded — skipping`);
+          if (this.textures.exists(key)) {
+            const resolved = map.addTilesetImage(ts.name, key);
+            if (resolved) resolvedTilesets.push(resolved);
             continue;
           }
-          map.addTilesetImage(ts.name, key);
+
+          if (this.textures.exists('tilemap_packed')) {
+            const resolved = map.addTilesetImage(ts.name, 'tilemap_packed');
+            if (resolved) resolvedTilesets.push(resolved);
+            continue;
+          }
+
+          console.warn(`[GameScene] texture "${key}" not preloaded — skipping`);
+        }
+
+        if (resolvedTilesets.length === 0) {
+          console.warn('[GameScene] no tileset resolved — rendering fallback grid');
+          this._drawFallbackGrid();
+          this._setupPlayers();
+          return;
         }
 
         // Render all tile layers in order
         const layerNames = map.layers.map(l => l.name);
         console.log('[GameScene] layers found:', layerNames);
 
+        let createdLayerCount = 0;
+
         for (const name of layerNames) {
           try {
-            map.createLayer(name, map.tilesets, 0, 0);
+            const layer = map.createLayer(name, resolvedTilesets, 0, 0);
+            if (layer) createdLayerCount += 1;
           } catch (e) {
             console.warn(`[GameScene] could not create layer "${name}":`, e.message);
           }
         }
 
+        if (createdLayerCount === 0) {
+          console.warn('[GameScene] no tile layer created — rendering fallback grid');
+          this._drawFallbackGrid();
+          this._setupPlayers();
+          return;
+        }
+
         // Fit camera to map
         this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+        this.fitMapToViewport(map.widthInPixels, map.heightInPixels);
+        this.scale.on('resize', () => {
+          this.fitMapToViewport(map.widthInPixels, map.heightInPixels);
+        });
 
         this._setupPlayers();
+      }
+
+      fitMapToViewport(mapWidth, mapHeight) {
+        const cam = this.cameras.main;
+        const zoomX = cam.width / mapWidth;
+        const zoomY = cam.height / mapHeight;
+        cam.setZoom(Math.max(zoomX, zoomY));
+        cam.centerOn(mapWidth / 2, mapHeight / 2);
       }
 
       _drawFallbackGrid() {
@@ -154,11 +176,16 @@
     // ── Phaser config ───────────────────────────────────────────────────────
     const config = {
       type: Phaser.AUTO,
-      width: 30 * 16,
-      height: 20 * 16,
+      width: window.innerWidth,
+      height: window.innerHeight,
       backgroundColor: '#1a1a2e',
       scene: [GameScene],
-      parent: document.body,
+      parent: 'game',
+      scale: {
+        mode: Phaser.Scale.RESIZE,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      },
     };
 
     const game = new Phaser.Game(config);
