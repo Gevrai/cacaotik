@@ -34,6 +34,13 @@
 
         this.load.tilemapTiledJSON('map', this._mapUrl);
         this.load.image('tilemap_packed', '/assets/tilemap_packed.png?t=' + mapCacheBust);
+
+        // Character spritesheets — 96×24px, 4 frames of 24×24
+        const t = mapCacheBust;
+        this.load.spritesheet('char_red',    `/assets/characters/players/red.png?t=${t}`,    { frameWidth: 24, frameHeight: 24 });
+        this.load.spritesheet('char_blue',   `/assets/characters/players/blue.png?t=${t}`,   { frameWidth: 24, frameHeight: 24 });
+        this.load.spritesheet('char_yellow', `/assets/characters/players/yellow.png?t=${t}`, { frameWidth: 24, frameHeight: 24 });
+        this.load.spritesheet('char_white',  `/assets/characters/players/white.png?t=${t}`,  { frameWidth: 24, frameHeight: 24 });
       }
 
       create() {
@@ -43,6 +50,7 @@
         if (!map) {
           console.warn('[GameScene] map.tmj not found — rendering placeholder grid');
           this._drawFallbackGrid();
+          this._defineCharAnims();
           this._setupPlayers();
           return;
         }
@@ -91,6 +99,7 @@
         if (createdLayerCount === 0) {
           console.warn('[GameScene] no tile layer created — rendering fallback grid');
           this._drawFallbackGrid();
+          this._defineCharAnims();
           this._setupPlayers();
           return;
         }
@@ -101,6 +110,7 @@
           this.fitMapToViewport(map.widthInPixels, map.heightInPixels);
         });
 
+        this._defineCharAnims();
         this._setupPlayers();
       }
 
@@ -125,49 +135,88 @@
         }
       }
 
+      // Maps server color hex → spritesheet key
+      _colorToSpriteKey(color) {
+        const map = {
+          '#e74c3c': 'char_red',
+          '#3498db': 'char_blue',
+          '#2ecc71': 'char_yellow',
+          '#f39c12': 'char_white',
+        };
+        return map[color] || 'char_red';
+      }
+
+      _defineCharAnims() {
+        const COLORS = ['red', 'blue', 'yellow', 'white'];
+        for (const c of COLORS) {
+          const key = `char_${c}`;
+          if (!this.anims.exists(`idle_${c}`)) {
+            this.anims.create({
+              key: `idle_${c}`,
+              frames: this.anims.generateFrameNumbers(key, { start: 0, end: 1 }),
+              frameRate: 4,
+              repeat: -1,
+            });
+          }
+          if (!this.anims.exists(`run_${c}`)) {
+            this.anims.create({
+              key: `run_${c}`,
+              frames: this.anims.generateFrameNumbers(key, { start: 2, end: 3 }),
+              frameRate: 8,
+              repeat: -1,
+            });
+          }
+        }
+      }
+
       _setupPlayers() {
-        // Graphics object reused every update for player circles
-        this._playerGfx = this.add.graphics();
+        this._sprites = {};   // id → Phaser.GameObjects.Sprite
+        this._prevPos = {};   // id → { gridX, gridY }
       }
 
       update() {
-        if (!this._playerGfx) return;
+        if (!this._sprites) return;
         const GRID_SIZE = 16;
-        const gfx = this._playerGfx;
-        gfx.clear();
+
+        const activeIds = new Set(Object.keys(players));
 
         for (const p of Object.values(players)) {
-          const cx = p.gridX * GRID_SIZE + GRID_SIZE / 2;
-          const cy = p.gridY * GRID_SIZE + GRID_SIZE / 2;
-          const r = GRID_SIZE / 2 - 4;
+          const px = p.gridX * GRID_SIZE + GRID_SIZE / 2;
+          const py = p.gridY * GRID_SIZE + GRID_SIZE / 2;
+          const spriteKey = this._colorToSpriteKey(p.color);
+          const colorName = spriteKey.replace('char_', '');
 
-          // Circle fill
-          gfx.fillStyle(Phaser.Display.Color.HexStringToColor(p.color).color, 1);
-          gfx.fillCircle(cx, cy, r);
-
-          // White stroke
-          gfx.lineStyle(2, 0xffffff, 1);
-          gfx.strokeCircle(cx, cy, r);
-
-          // Player ID label
-          if (!this._labels) this._labels = {};
-          if (!this._labels[p.id]) {
-            this._labels[p.id] = this.add.text(cx, cy, String(p.id), {
-              font: 'bold 12px monospace',
-              color: '#ffffff',
-            }).setOrigin(0.5);
-          } else {
-            this._labels[p.id].setPosition(cx, cy);
+          // Create sprite on first appearance
+          if (!this._sprites[p.id]) {
+            const spr = this.add.sprite(px, py, spriteKey);
+            spr.setScale(GRID_SIZE / 24);   // fit sprite into grid cell
+            spr.play(`idle_${colorName}`);
+            this._sprites[p.id] = spr;
+            this._prevPos[p.id] = { gridX: p.gridX, gridY: p.gridY };
           }
+
+          const spr = this._sprites[p.id];
+          const prev = this._prevPos[p.id];
+          const moved = prev.gridX !== p.gridX || prev.gridY !== p.gridY;
+
+          // Flip horizontally when moving left
+          if (p.gridX < prev.gridX) spr.setFlipX(true);
+          else if (p.gridX > prev.gridX) spr.setFlipX(false);
+
+          // Switch animation
+          const targetAnim = moved ? `run_${colorName}` : `idle_${colorName}`;
+          if (spr.anims.currentAnim?.key !== targetAnim) spr.play(targetAnim);
+
+          spr.setPosition(px, py);
+          this._prevPos[p.id] = { gridX: p.gridX, gridY: p.gridY };
         }
 
-        // Remove labels for disconnected players
-        if (this._labels) {
-          for (const id of Object.keys(this._labels)) {
-            if (!players[id]) {
-              this._labels[id].destroy();
-              delete this._labels[id];
-            }
+        // Remove sprites for disconnected players
+        for (const id of Object.keys(this._sprites)) {
+          if (!activeIds.has(id)) {
+            this._sprites[id].destroy();
+            delete this._sprites[id];
+            delete this._prevPos[id];
           }
         }
       }
