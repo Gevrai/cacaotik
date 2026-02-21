@@ -45,6 +45,7 @@ app.get('/connect-info', async (req, res) => {
 });
 
 app.use(express.static('public'));
+app.use('/phaser', express.static('node_modules/phaser/dist'));
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {

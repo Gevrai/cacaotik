@@ -1,4 +1,6 @@
 const { WebSocketServer } = require('ws');
+const path = require('path');
+const { watchMaps } = require('./map-watcher');
 
 // Grid config
 const GRID_SIZE = 32;
@@ -81,6 +83,15 @@ function setupWebSocket(server) {
       delete players[id];
       broadcastState();
     });
+  });
+
+  // Watch assets/ for map changes and broadcast hot-reload to all clients
+  const assetsDir = path.join(__dirname, '..', 'public', 'assets');
+  watchMaps(assetsDir, (filename) => {
+    const msg = JSON.stringify({ type: 'reload_map', file: filename });
+    for (const client of wss.clients) {
+      if (client.readyState === 1) client.send(msg);
+    }
   });
 
   return wss;

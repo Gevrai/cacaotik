@@ -3,7 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <title>Cacaotique — Display</title>
-  <link rel="stylesheet" href="/styles/server.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a2e; overflow: hidden; }
+    #status {
+      position: fixed;
+      top: 8px; left: 50%;
+      transform: translateX(-50%);
+      color: #aaa;
+      font: 12px monospace;
+      background: rgba(0,0,0,0.5);
+      padding: 2px 8px;
+      border-radius: 4px;
+      z-index: 10;
+      pointer-events: none;
+    }
+  </style>
 </head>
 <body>
   <div id="status">connecting…</div>
@@ -12,65 +27,148 @@
     <img id="connect-qr" alt="QR code to connect controllers" />
     <div id="connect-url">loading…</div>
   </div>
+  <script src="/phaser/phaser.min.js"></script>
   <script>
-    const GRID_SIZE = 32;
-    const GRID_COLS = 20;
-    const GRID_ROWS = 15;
-
-    const canvas = document.getElementById('game');
-    const ctx = canvas.getContext('2d');
-    canvas.width = GRID_COLS * GRID_SIZE;
-    canvas.height = GRID_ROWS * GRID_SIZE;
-
+    // ── Shared state (updated by WebSocket, read by Phaser scene) ──────────
     let players = {};
+    let mapCacheBust = Date.now();
+    const statusEl = document.getElementById('status');
 
-    function drawGrid() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = '#2a2a4a';
-      ctx.lineWidth = 1;
-      for (let x = 0; x <= GRID_COLS; x++) {
-        ctx.beginPath();
-        ctx.moveTo(x * GRID_SIZE, 0);
-        ctx.lineTo(x * GRID_SIZE, canvas.height);
-        ctx.stroke();
+    // ── Phaser scene ────────────────────────────────────────────────────────
+    class GameScene extends Phaser.Scene {
+      constructor() { super({ key: 'GameScene' }); }
+
+      init() {
+        // Called before preload on every (re)start — capture current cache bust
+        this._mapUrl = '/assets/map.tmj?t=' + mapCacheBust;
       }
-      for (let y = 0; y <= GRID_ROWS; y++) {
-        ctx.beginPath();
-        ctx.moveTo(0, y * GRID_SIZE);
-        ctx.lineTo(canvas.width, y * GRID_SIZE);
-        ctx.stroke();
+
+      preload() {
+        // Remove stale cached map so Phaser re-fetches from disk
+        if (this.cache.tilemap.has('map')) this.cache.tilemap.remove('map');
+
+        this.load.tilemapTiledJSON('map', this._mapUrl);
+
+        // Load every image in assets/ that might be a tileset.
+        // Artist must match the name used in Tiled's tileset "Name" field.
+        this.load.image('tileset', '/assets/tileset.png?t=' + mapCacheBust);
+      }
+
+      create() {
+        // ── Tilemap ──────────────────────────────────────────────────────────
+        const map = this.make.tilemap({ key: 'map' });
+
+        if (!map) {
+          console.warn('[GameScene] map.tmj not found — rendering placeholder grid');
+          this._drawFallbackGrid();
+          this._setupPlayers();
+          return;
+        }
+
+        // Try to add each tileset by its Tiled "Name"; silently skip missing images
+        for (const ts of map.tilesets) {
+          const key = ts.name;
+          if (!this.textures.exists(key)) {
+            // Try loading the tileset image dynamically (if the key matches a file)
+            console.warn(`[GameScene] texture "${key}" not preloaded — skipping`);
+            continue;
+          }
+          map.addTilesetImage(ts.name, key);
+        }
+
+        // Render all tile layers in order
+        const layerNames = map.layers.map(l => l.name);
+        console.log('[GameScene] layers found:', layerNames);
+
+        for (const name of layerNames) {
+          try {
+            map.createLayer(name, map.tilesets, 0, 0);
+          } catch (e) {
+            console.warn(`[GameScene] could not create layer "${name}":`, e.message);
+          }
+        }
+
+        // Fit camera to map
+        this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+
+        this._setupPlayers();
+      }
+
+      _drawFallbackGrid() {
+        const GRID_SIZE = 32, COLS = 20, ROWS = 15;
+        const g = this.add.graphics();
+        g.lineStyle(1, 0x2a2a4a, 1);
+        for (let x = 0; x <= COLS; x++) {
+          g.lineBetween(x * GRID_SIZE, 0, x * GRID_SIZE, ROWS * GRID_SIZE);
+        }
+        for (let y = 0; y <= ROWS; y++) {
+          g.lineBetween(0, y * GRID_SIZE, COLS * GRID_SIZE, y * GRID_SIZE);
+        }
+      }
+
+      _setupPlayers() {
+        // Graphics object reused every update for player circles
+        this._playerGfx = this.add.graphics();
+      }
+
+      update() {
+        if (!this._playerGfx) return;
+        const GRID_SIZE = 32;
+        const gfx = this._playerGfx;
+        gfx.clear();
+
+        for (const p of Object.values(players)) {
+          const cx = p.gridX * GRID_SIZE + GRID_SIZE / 2;
+          const cy = p.gridY * GRID_SIZE + GRID_SIZE / 2;
+          const r = GRID_SIZE / 2 - 4;
+
+          // Circle fill
+          gfx.fillStyle(Phaser.Display.Color.HexStringToColor(p.color).color, 1);
+          gfx.fillCircle(cx, cy, r);
+
+          // White stroke
+          gfx.lineStyle(2, 0xffffff, 1);
+          gfx.strokeCircle(cx, cy, r);
+
+          // Player ID label
+          if (!this._labels) this._labels = {};
+          if (!this._labels[p.id]) {
+            this._labels[p.id] = this.add.text(cx, cy, String(p.id), {
+              font: 'bold 12px monospace',
+              color: '#ffffff',
+            }).setOrigin(0.5);
+          } else {
+            this._labels[p.id].setPosition(cx, cy);
+          }
+        }
+
+        // Remove labels for disconnected players
+        if (this._labels) {
+          for (const id of Object.keys(this._labels)) {
+            if (!players[id]) {
+              this._labels[id].destroy();
+              delete this._labels[id];
+            }
+          }
+        }
       }
     }
 
-    function drawPlayers() {
-      for (const p of Object.values(players)) {
-        const cx = p.gridX * GRID_SIZE + GRID_SIZE / 2;
-        const cy = p.gridY * GRID_SIZE + GRID_SIZE / 2;
-        const r = GRID_SIZE / 2 - 4;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fillStyle = p.color;
-        ctx.fill();
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        // Player ID label
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 12px monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(p.id, cx, cy);
-      }
-    }
+    // ── Phaser config ───────────────────────────────────────────────────────
+    const config = {
+      type: Phaser.AUTO,
+      width: 20 * 32,   // default; resized once map loads
+      height: 15 * 32,
+      backgroundColor: '#1a1a2e',
+      scene: [GameScene],
+      parent: document.body,
+    };
 
-    function render() {
-      drawGrid();
-      drawPlayers();
-    }
+    const game = new Phaser.Game(config);
 
+    // ── WebSocket ───────────────────────────────────────────────────────────
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}`);
-    const statusEl = document.getElementById('status');
     const connectQrEl = document.getElementById('connect-qr');
     const connectUrlEl = document.getElementById('connect-url');
 
@@ -91,14 +189,19 @@
 
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
+
       if (msg.type === 'state') {
         players = {};
         for (const p of msg.players) players[p.id] = p;
-        render();
+        statusEl.textContent = `players: ${msg.players.length}`;
       }
-      if (msg.type === 'init') {
-        // Display screen doesn't need init, but update status
-        statusEl.textContent = `players: ${Object.keys(players).length}`;
+
+      if (msg.type === 'reload_map') {
+        console.log('[ws] reload_map received — restarting scene');
+        statusEl.textContent = 'reloading map…';
+        mapCacheBust = Date.now();
+        game.scene.stop('GameScene');
+        game.scene.start('GameScene');
       }
     };
 

@@ -26,10 +26,14 @@ Cacaotique is a chaotic co-op farming/cooking game for a 6h game jam.
     ├── Opens a WebSocket server on the same HTTP port
     ├── Tracks game state (player positions, etc.)
     ├── Receives input messages from mobile clients
-    └── Broadcasts full game state to all connected clients
+    ├── Broadcasts full game state to all connected clients
+    └── Starts map-watcher on /public/assets/ for hot-reload
+
+[Map watcher — /scripts/map-watcher.js]
+    └── Watches /public/assets/ for .tmj changes, calls back with filename
 
 [Display — /public/server.html]
-    └── Canvas-based game view, connects via WS, renders state
+    └── Phaser 3 game view: loads Tiled map, renders players, hot-reloads on reload_map
 
 [Mobile controller — /public/index.html  (root)]
     └── D-pad HTML page, connects via WS, sends input, shows player color
@@ -52,10 +56,14 @@ gorockit-jam/
 ├── server.js                  # Node.js express server + HTTP bootstrap
 ├── scripts/
 │   ├── dev.js                 # Dev startup script (prints LAN URLs, starts server)
-│   └── websocket.js           # WebSocket setup + game state logic
+│   ├── websocket.js           # WebSocket setup + game state logic + map hot-reload
+│   └── map-watcher.js         # fs.watch wrapper for .tmj files in public/assets/
 ├── public/
 │   ├── index.html             # Mobile controller (D-pad)
-│   └── server.html            # Game display (canvas)
+│   ├── server.html            # Game display (Phaser 3 + Tiled map)
+│   └── assets/
+│       ├── map.tmj            # Tiled map export (JSON) — artist edits this
+│       └── tileset.png        # Tileset image referenced by the map
 ├── package.json
 ├── POC.md                     # Original game design document
 └── AGENTS.md                  # This file
@@ -79,6 +87,7 @@ All messages are JSON.
 |--------|--------|-------------|
 | `init` | `id, color, gridX, gridY, gridSize, gridCols, gridRows` | Sent once on connection to the connecting client |
 | `state` | `players: [{id, color, gridX, gridY}]` | Full player state, sent after every change |
+| `reload_map` | `file: string` | Sent when a .tmj file changes; display restarts its Phaser scene |
 
 ---
 
