@@ -822,6 +822,7 @@
           if (!this._sprites[p.id]) {
             const spr = this.add.sprite(sx, sy, spriteKey);
             spr.setScale(DISPLAY_GRID / 24);
+            spr.setDepth(7);
             spr.play(`idle_${colorName}`);
             this._sprites[p.id] = spr;
             this._local[p.id] = { x: sx, y: sy };
@@ -867,7 +868,7 @@
           // Swimming effect
           if (!this._swimData[p.id]) {
             const foam = this.add.graphics();
-            foam.setDepth(19);
+            foam.setDepth(6);
             this._swimData[p.id] = { foam, swimTime: 0 };
           }
           const swim = this._swimData[p.id];
@@ -885,9 +886,9 @@
             const pulseR = 5.5 + Math.sin(foamPhase) * 0.8;
             swim.foam.clear();
             swim.foam.lineStyle(1, 0xddeeff, 0.45 + Math.sin(foamPhase * 1.7) * 0.15);
-            swim.foam.strokeEllipse(loc.x, loc.y + bob, pulseR * 2.2, pulseR * 0.9);
+            swim.foam.strokeEllipse(loc.x, loc.y + bob - 3, pulseR * 2.2, pulseR * 0.9);
             swim.foam.lineStyle(0.7, 0xffffff, 0.25);
-            swim.foam.strokeEllipse(loc.x, loc.y + bob, (pulseR + 1.5) * 2.2, (pulseR + 1.5) * 0.9);
+            swim.foam.strokeEllipse(loc.x, loc.y + bob - 3, (pulseR + 1.5) * 2.2, (pulseR + 1.5) * 0.9);
           } else {
             // Reset crop when out of water
             spr.setCrop(0, 0, 24, 24);
