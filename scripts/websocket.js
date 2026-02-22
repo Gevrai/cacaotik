@@ -255,21 +255,15 @@ function setupWebSocket(server) {
       try { msg = JSON.parse(raw); } catch { return; }
 
       if (msg.type === 'join' && !player) {
-        // Assign character: honour preference if available, else first free
+        // Assign character: honour preference if free, else first free, else cycle
         const takenChars = Object.values(players).map(p => p.character);
         const preferred = msg.character;
         const char = (CHARACTER_KEYS.includes(preferred) && !takenChars.includes(preferred))
           ? preferred
-          : CHARACTER_KEYS.find(c => !takenChars.includes(c));
+          : (CHARACTER_KEYS.find(c => !takenChars.includes(c))
+            ?? CHARACTER_KEYS[(id - 1) % CHARACTER_KEYS.length]);
 
-        if (!char) {
-          ws.send(JSON.stringify({ type: 'error', message: 'Partie pleine (max 4 joueurs).' }));
-          ws.close();
-          return;
-        }
-
-        const idx = CHARACTER_KEYS.indexOf(char);
-        const startGridX = 2 + idx * 3;
+        const startGridX = 2 + ((id - 1) % 8) * 2;
         const startGridY = 2;
         player = {
           id,
