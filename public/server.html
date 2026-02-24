@@ -1011,7 +1011,7 @@
     }
 
     ws.onopen = () => { statusEl.textContent = 'display connected'; };
-    ws.onclose = () => { statusEl.textContent = 'disconnected'; };
+    ws.onclose = () => { statusEl.textContent = 'disconnected'; players = {}; };
 
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
