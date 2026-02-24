@@ -4,6 +4,7 @@ const { watchMaps } = require('./map-watcher');
 const { tickPlayer, velocityFromDirection, GRID_SIZE } = require('./movement');
 const { createActionManager } = require('./actions');
 const { loadMapNavigation } = require('./map-nav');
+const { saveWorldState, loadPlayerInventory, savePlayerInventory } = require('./persist');
 
 // Load water cells by reading the 'mare' tile layer from basemap1.tmj
 function loadWaterCells(tmjPath) {
@@ -96,7 +97,7 @@ function findNearestFreeCell(startX, startY, blockedCells, gridCols, gridRows) {
   return null;
 }
 
-function setupWebSocket(server) {
+function setupWebSocket(server, initialState = null) {
   const wss = new WebSocketServer({ server });
   const players = {}; // id -> { id, name, character, color, x, y, vx, vy, gridX, gridY, ws }
   let nextId = 1;
@@ -150,6 +151,7 @@ function setupWebSocket(server) {
       llamas: LLAMA_STATIONS,
       rabbits: RABBIT_STATIONS,
     },
+    initialState,
     onActionChange: (actionState) => {
       broadcast({
         type: 'action_update',
@@ -163,6 +165,21 @@ function setupWebSocket(server) {
         ...result,
       });
     },
+    onInventoryChange: (name, inventory) => {
+      savePlayerInventory(name, inventory);
+    },
+  });
+
+  // Save world state every 60 seconds
+  setInterval(() => {
+    saveWorldState(actionManager.getSerializableState());
+  }, 60 * 1000);
+
+  // Save world state immediately on scale-down signal
+  process.once('SIGTERM', async () => {
+    console.log('[websocket] SIGTERM — saving world state before shutdown');
+    await saveWorldState(actionManager.getSerializableState());
+    process.exit(0);
   });
 
   function broadcastState() {
@@ -258,75 +275,92 @@ function setupWebSocket(server) {
       try { msg = JSON.parse(raw); } catch { return; }
 
       if (msg.type === 'join' && !player) {
-        const reconnectId = typeof msg.reconnectId === 'string' ? msg.reconnectId.slice(0, 64) : null;
-        const snapshot = reconnectId ? reconnectMap[reconnectId] : null;
+        // Wrap in async IIFE to allow awaiting inventory load
+        (async () => {
+          const playerName = (msg.name || `Joueur ${id}`).slice(0, 16);
 
-        let char, playerName, x, y, gridX, gridY;
+          // Reject if this name is already in use by a connected player
+          const takenNames = Object.values(players).map(p => p.name);
+          if (takenNames.includes(playerName)) {
+            ws.send(JSON.stringify({
+              type: 'join_rejected',
+              reason: 'name_taken',
+              message: `Le nom "${playerName}" est déjà utilisé par quelqu'un de connecté. Choisis un autre nom.`,
+            }));
+            return;
+          }
 
-        if (snapshot) {
-          // Restore previous slot if character is still free (or was theirs)
-          const takenChars = Object.values(players).map(p => p.character);
-          char = !takenChars.includes(snapshot.character) ? snapshot.character
-            : (CHARACTER_KEYS.find(c => !takenChars.includes(c)) ?? CHARACTER_KEYS[(id - 1) % CHARACTER_KEYS.length]);
-          playerName = snapshot.name;
-          x = snapshot.x; y = snapshot.y;
-          gridX = snapshot.gridX; gridY = snapshot.gridY;
-          console.log(`Player ${id} (${playerName}) reconnected via reconnectId.`);
-        } else {
-          // New player
+          // Assign character
           const takenChars = Object.values(players).map(p => p.character);
           const preferred = msg.character;
-          char = (CHARACTER_KEYS.includes(preferred) && !takenChars.includes(preferred))
+          const char = (CHARACTER_KEYS.includes(preferred) && !takenChars.includes(preferred))
             ? preferred
             : (CHARACTER_KEYS.find(c => !takenChars.includes(c))
               ?? CHARACTER_KEYS[(id - 1) % CHARACTER_KEYS.length]);
-          playerName = (msg.name || `Joueur ${id}`).slice(0, 16);
-          const startGridX = 2 + ((id - 1) % 8) * 2;
-          const startGridY = 2;
-          x = startGridX * GRID_SIZE + GRID_SIZE / 2;
-          y = startGridY * GRID_SIZE + GRID_SIZE / 2;
-          gridX = startGridX; gridY = startGridY;
-        }
 
-        player = {
-          id,
-          name: playerName,
-          character: char,
-          color: CHARACTER_COLORS[char],
-          x, y,
-          vx: 0,
-          vy: 0,
-          gridX, gridY,
-          ws,
-          reconnectId,
-        };
-        players[id] = player;
-        if (reconnectId) reconnectMap[reconnectId] = player;
+          // Load saved inventory (async) and inject before player's first action
+          const savedInventory = await loadPlayerInventory(playerName);
+          if (savedInventory) {
+            actionManager.setPlayerInventory(playerName, savedInventory);
+            console.log(`[persist] inventory loaded for ${playerName}`);
+          }
 
-        ws.send(JSON.stringify({
-          type: 'init',
-          id,
-          name: player.name,
-          character: player.character,
-          color: player.color,
-          x: player.x,
-          y: player.y,
-          gridX: player.gridX,
-          gridY: player.gridY,
-          gridSize: GRID_SIZE,
-          gridCols: nav.gridCols,
-          gridRows: nav.gridRows,
-        }));
+          // Restore position from reconnect map if available
+          const reconnectId = typeof msg.reconnectId === 'string' ? msg.reconnectId.slice(0, 64) : null;
+          const snapshot = reconnectId ? reconnectMap[reconnectId] : null;
+          let x, y, gridX, gridY;
+          if (snapshot && snapshot.name === playerName) {
+            x = snapshot.x; y = snapshot.y;
+            gridX = snapshot.gridX; gridY = snapshot.gridY;
+            console.log(`Player ${id} (${playerName}) reconnected via reconnectId.`);
+          } else {
+            const startGridX = 2 + ((id - 1) % 8) * 2;
+            const startGridY = 2;
+            x = startGridX * GRID_SIZE + GRID_SIZE / 2;
+            y = startGridY * GRID_SIZE + GRID_SIZE / 2;
+            gridX = startGridX; gridY = startGridY;
+          }
 
-        ws.send(JSON.stringify({
-          type: 'action_update',
-          ...actionManager.getPublicActionState(players),
-          serverTime: Date.now(),
-        }));
+          player = {
+            id,
+            name: playerName,
+            character: char,
+            color: CHARACTER_COLORS[char],
+            x, y,
+            vx: 0,
+            vy: 0,
+            gridX, gridY,
+            ws,
+            reconnectId,
+          };
+          players[id] = player;
+          if (reconnectId) reconnectMap[reconnectId] = player;
 
-        console.log(`Player ${id} (${player.name}, ${char}) joined. Total: ${Object.keys(players).length}`);
-        broadcastState();
-        actionManager.handleRosterChange(players);
+          ws.send(JSON.stringify({
+            type: 'init',
+            id,
+            name: player.name,
+            character: player.character,
+            color: player.color,
+            x: player.x,
+            y: player.y,
+            gridX: player.gridX,
+            gridY: player.gridY,
+            gridSize: GRID_SIZE,
+            gridCols: nav.gridCols,
+            gridRows: nav.gridRows,
+          }));
+
+          ws.send(JSON.stringify({
+            type: 'action_update',
+            ...actionManager.getPublicActionState(players),
+            serverTime: Date.now(),
+          }));
+
+          console.log(`Player ${id} (${player.name}, ${char}) joined. Total: ${Object.keys(players).length}`);
+          broadcastState();
+          actionManager.handleRosterChange(players);
+        })();
         return;
       }
 

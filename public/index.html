@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <title>Cacaotique — Controller</title>
+  <link rel="icon" type="image/png" href="/assets/characters/lapin/lapin_sit.png" />
   <link rel="stylesheet" href="/styles/index.css" />
 </head>
 <body>
@@ -12,6 +13,7 @@
 
     <label for="name-input" class="lobby-label">Ton nom</label>
     <input id="name-input" type="text" maxlength="16" placeholder="Entrer un nom…" autocomplete="off" autocorrect="off" spellcheck="false" />
+    <p id="lobby-error" style="color:#e74c3c;display:none;margin:4px 0 0;font-size:0.9em;"></p>
 
     <p class="lobby-label">Choisis ton personnage</p>
     <div id="character-grid">
@@ -95,11 +97,21 @@
     const lobbyEl = document.getElementById('lobby');
     const gameEl = document.getElementById('game');
     const nameInputEl = document.getElementById('name-input');
+    const lobbyErrorEl = document.getElementById('lobby-error');
     const charBtns = document.querySelectorAll('.char-btn');
     const btnEnterEl = document.getElementById('btn-enter');
 
     let selectedChar = null;
     let gameStarted = false;
+
+    function showLobbyError(message) {
+      lobbyErrorEl.textContent = message;
+      lobbyErrorEl.style.display = 'block';
+    }
+
+    function clearLobbyError() {
+      lobbyErrorEl.style.display = 'none';
+    }
 
     const savedName = localStorage.getItem('cacao_name');
     const savedChar = localStorage.getItem('cacao_char');
@@ -125,10 +137,21 @@
     function launchGame(name, character) {
       if (gameStarted) return;
       gameStarted = true;
+      clearLobbyError();
       lobbyEl.style.display = 'none';
       gameEl.style.display = 'flex';
       startGame(name, character);
     }
+
+    function returnToLobby(errorMessage) {
+      gameStarted = false;
+      gameEl.style.display = 'none';
+      lobbyEl.style.display = '';
+      if (errorMessage) showLobbyError(errorMessage);
+      btnEnterEl.disabled = false;
+    }
+
+    nameInputEl.addEventListener('input', clearLobbyError);
 
     btnEnterEl.addEventListener('click', () => {
       const name = nameInputEl.value.trim() || 'Joueur';
@@ -297,6 +320,8 @@
         };
 
         ws.onclose = () => {
+          // Don't auto-reconnect if we were rejected — returnToLobby already called
+          if (!gameStarted) return;
           statusEl.textContent = 'reconnexion...';
           setTimeout(connect, 3000);
         };
@@ -308,6 +333,12 @@
 
       function onMessage(event) {
         const msg = JSON.parse(event.data);
+
+        if (msg.type === 'join_rejected') {
+          ws.close();
+          returnToLobby(msg.message);
+          return;
+        }
 
         if (msg.type === 'init') {
           myId = msg.id;

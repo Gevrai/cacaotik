@@ -3,10 +3,14 @@ const http = require('http');
 const os = require('os');
 const QRCode = require('qrcode');
 const { setupWebSocket } = require('./scripts/websocket');
+const { loadWorldState } = require('./scripts/persist');
 
 const app = express();
 const server = http.createServer(app);
-setupWebSocket(server);
+
+loadWorldState().then((initialState) => {
+  setupWebSocket(server, initialState);
+});
 
 function getLanIp() {
   const interfaces = os.networkInterfaces();
@@ -26,10 +30,12 @@ function getLanIp() {
 app.get('/connect-info', async (req, res) => {
   try {
     const port = process.env.PORT || 3000;
+    const forwardedHost = req.headers['x-forwarded-host'] || req.headers['host'];
+    const forwardedProto = req.headers['x-forwarded-proto'] || req.protocol;
     const connectUrl = process.env.PUBLIC_URL
       ? `${process.env.PUBLIC_URL}/`
-      : req.headers['x-forwarded-host'] || req.headers.host
-        ? `${req.protocol}://${req.headers['x-forwarded-host'] || req.headers.host}/`
+      : forwardedHost
+        ? `${forwardedProto}://${forwardedHost}/`
         : `http://${getLanIp()}:${port}/`;
     const qrDataUrl = await QRCode.toDataURL(connectUrl, {
       width: 320,

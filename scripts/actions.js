@@ -126,6 +126,8 @@ function createActionManager(options = {}) {
     stations = {},
     onActionChange = () => {},
     onActionResult = () => {},
+    onInventoryChange = () => {},
+    initialState = null,
   } = options;
 
   const stationByKey = {
@@ -144,18 +146,19 @@ function createActionManager(options = {}) {
 
   const inProgressByPlayer = {};
   const completionTimeoutByPlayer = {};
+  // Keyed by player name. Pre-populated via setPlayerInventory() on join.
   const inventoryByProfile = {};
   const beeFlights = [];
   const fireBursts = [];
-  const rabbitCacaoTiles = [];
+  const rabbitCacaoTiles = initialState ? [...initialState.rabbitCacaoTiles] : [];
   let playersSnapshot = {};
 
   let nextActionId = 1;
-  let nextPlantId = 1;
+  let nextPlantId = initialState ? initialState.nextPlantId : 1;
   let nextBeeFlightId = 1;
   let nextFireBurstId = 1;
-  let nextRabbitCacaoTileId = 1;
-  const plants = [];
+  let nextRabbitCacaoTileId = initialState ? initialState.nextRabbitCacaoTileId : 1;
+  const plants = initialState ? [...initialState.plants] : [];
 
   function clearCompletionTimer(playerId) {
     if (completionTimeoutByPlayer[playerId]) {
@@ -165,7 +168,7 @@ function createActionManager(options = {}) {
   }
 
   function profileKeyFromPlayer(player) {
-    return `${player.character}|${player.name}`;
+    return player.name;
   }
 
   function getInventoryForPlayerId(playerId, playersById = playersSnapshot) {
@@ -798,6 +801,11 @@ function createActionManager(options = {}) {
       ...sfxPayload,
     });
 
+    if (success && inventory) {
+      const player = playersById[playerId] || playersSnapshot[playerId];
+      if (player) onInventoryChange(player.name, inventory);
+    }
+
     emitActionChange(playersById);
   }
 
@@ -1009,8 +1017,30 @@ function createActionManager(options = {}) {
     }, actionToStart.durationMs);
   }
 
+  /** World state only (no player inventories — those are saved per-player). */
+  function getSerializableState() {
+    return {
+      plants: plants.map(p => ({ id: p.id, gridX: p.gridX, gridY: p.gridY, stage: p.stage })),
+      rabbitCacaoTiles: rabbitCacaoTiles.map(t => ({ id: t.id, targetGridX: t.targetGridX, targetGridY: t.targetGridY })),
+      nextPlantId,
+      nextRabbitCacaoTileId,
+    };
+  }
+
+  /** Pre-load a player's saved inventory before their first interaction. */
+  function setPlayerInventory(name, inventory) {
+    inventoryByProfile[name] = {
+      hasWater: false, // always reset on session start
+      seeds: inventory.seeds ?? 1,
+      cacao: inventory.cacao ?? 0,
+      money: inventory.money ?? 0,
+    };
+  }
+
   return {
     getPublicActionState,
+    getSerializableState,
+    setPlayerInventory,
     getBlockedPlantCellKeys,
     getBlockedLlamaCellKeys,
     getBlockedHouseCellKeys,

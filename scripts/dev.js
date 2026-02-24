@@ -20,12 +20,12 @@ const port = process.env.PORT || 3000;
 const lanIp = getLanIp();
 
 console.log('');
-console.log('  ╔══════════════════════════════════════╗');
-console.log('  ║         CACAOTIQUE  🍫               ║');
-console.log('  ╠══════════════════════════════════════╣');
+console.log('  ╔══════════════════════════════════════════════════╗');
+console.log('  ║                 CACAOTIQUE  🍫                   ║');
+console.log('  ╠══════════════════════════════════════════════════╣');
 console.log(`  ║  Display : http://localhost:${port}/server.html  ║`);
 console.log(`  ║  Mobile  : http://${lanIp}:${port}               ║`);
-console.log('  ╚══════════════════════════════════════╝');
+console.log('  ╚══════════════════════════════════════════════════╝');
 console.log('');
 
 require(path.join(__dirname, '..', 'server.js'));
