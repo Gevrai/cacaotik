@@ -26,8 +26,11 @@ function getLanIp() {
 app.get('/connect-info', async (req, res) => {
   try {
     const port = process.env.PORT || 3000;
-    const lanIp = getLanIp();
-    const connectUrl = `http://${lanIp}:${port}/`;
+    const connectUrl = process.env.PUBLIC_URL
+      ? `${process.env.PUBLIC_URL}/`
+      : req.headers['x-forwarded-host'] || req.headers.host
+        ? `${req.protocol}://${req.headers['x-forwarded-host'] || req.headers.host}/`
+        : `http://${getLanIp()}:${port}/`;
     const qrDataUrl = await QRCode.toDataURL(connectUrl, {
       width: 320,
       margin: 1,

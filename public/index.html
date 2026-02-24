@@ -278,20 +278,35 @@
     }
 
     function startGame(name, character) {
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const ws = new WebSocket(`${proto}://${location.host}`);
+      // Stable ID stored in localStorage so server can restore our slot after reconnect
+      let reconnectId = localStorage.getItem('cacaotik_reconnect_id');
+      if (!reconnectId) {
+        reconnectId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        localStorage.setItem('cacaotik_reconnect_id', reconnectId);
+      }
 
-      ws.onopen = () => {
-        statusEl.textContent = 'connected';
-        ws.send(JSON.stringify({ type: 'join', name, character }));
-      };
+      let ws = null;
 
-      ws.onclose = () => {
-        statusEl.textContent = 'disconnected';
-        infoEl.textContent = 'connexion perdue';
-      };
+      function connect() {
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        ws = new WebSocket(`${proto}://${location.host}`);
 
-      ws.onmessage = (event) => {
+        ws.onopen = () => {
+          statusEl.textContent = 'connected';
+          ws.send(JSON.stringify({ type: 'join', name, character, reconnectId }));
+        };
+
+        ws.onclose = () => {
+          statusEl.textContent = 'reconnexion...';
+          setTimeout(connect, 3000);
+        };
+
+        ws.onmessage = onMessage;
+      }
+
+      connect();
+
+      function onMessage(event) {
         const msg = JSON.parse(event.data);
 
         if (msg.type === 'init') {
@@ -357,7 +372,7 @@
             }
           }
         }
-      };
+      }
 
       function sendMove(dir) {
         if (ws.readyState !== 1) return;

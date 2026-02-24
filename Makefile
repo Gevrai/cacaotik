@@ -1,4 +1,9 @@
-.PHONY: dev start install
+PROJECT  = cacaotik-game
+APP      = cacaotik
+REGION   = northamerica-northeast1
+IMAGE    = $(REGION)-docker.pkg.dev/$(PROJECT)/$(APP)/app
+
+.PHONY: dev start install init-deploy docker-auth docker-build docker-push deploy release
 
 dev:
 	node scripts/dev.js
@@ -8,3 +13,43 @@ start:
 
 install:
 	npm install
+
+# Run once on a new GCP account to create the project, enable APIs, and create the registry
+init-deploy:
+	gcloud projects create $(PROJECT) --name="Cacaotik" || true
+	gcloud config set project $(PROJECT)
+	gcloud services enable run.googleapis.com artifactregistry.googleapis.com
+	gcloud artifacts repositories create $(APP) \
+		--repository-format=docker \
+		--location=$(REGION) \
+		--description="Cacaotik container images" || true
+	$(MAKE) docker-auth
+
+# Run once to allow docker to push to GCP Artifact Registry
+docker-auth:
+	gcloud auth configure-docker $(REGION)-docker.pkg.dev
+
+docker-build:
+	docker build -t $(IMAGE) .
+
+docker-push:
+	docker push $(IMAGE)
+
+deploy:
+	gcloud run deploy cacaotik \
+		--image $(IMAGE) \
+		--region $(REGION) \
+		--max-instances 1 \
+		--min-instances 0 \
+		--memory 256Mi \
+		--timeout 3600 \
+		--allow-unauthenticated
+
+# Full release: build locally, push, deploy
+release: docker-build docker-push deploy
+
+# Delete the entire GCP project and all its resources
+destroy-deployment:
+	@echo "WARNING: This will delete the entire GCP project '$(PROJECT)' and all its resources."
+	@read -p "Type the project name to confirm: " confirm && [ "$$confirm" = "$(PROJECT)" ] || (echo "Aborted." && exit 1)
+	gcloud projects delete $(PROJECT)

@@ -246,6 +246,9 @@ function setupWebSocket(server) {
     }
   }, TICK_MS);
 
+  // reconnectMap: reconnectId -> player snapshot (persists across disconnects)
+  const reconnectMap = {};
+
   wss.on('connection', (ws) => {
     const id = nextId++;
     let player = null; // assigned after 'join'
@@ -255,30 +258,50 @@ function setupWebSocket(server) {
       try { msg = JSON.parse(raw); } catch { return; }
 
       if (msg.type === 'join' && !player) {
-        // Assign character: honour preference if free, else first free, else cycle
-        const takenChars = Object.values(players).map(p => p.character);
-        const preferred = msg.character;
-        const char = (CHARACTER_KEYS.includes(preferred) && !takenChars.includes(preferred))
-          ? preferred
-          : (CHARACTER_KEYS.find(c => !takenChars.includes(c))
-            ?? CHARACTER_KEYS[(id - 1) % CHARACTER_KEYS.length]);
+        const reconnectId = typeof msg.reconnectId === 'string' ? msg.reconnectId.slice(0, 64) : null;
+        const snapshot = reconnectId ? reconnectMap[reconnectId] : null;
 
-        const startGridX = 2 + ((id - 1) % 8) * 2;
-        const startGridY = 2;
+        let char, playerName, x, y, gridX, gridY;
+
+        if (snapshot) {
+          // Restore previous slot if character is still free (or was theirs)
+          const takenChars = Object.values(players).map(p => p.character);
+          char = !takenChars.includes(snapshot.character) ? snapshot.character
+            : (CHARACTER_KEYS.find(c => !takenChars.includes(c)) ?? CHARACTER_KEYS[(id - 1) % CHARACTER_KEYS.length]);
+          playerName = snapshot.name;
+          x = snapshot.x; y = snapshot.y;
+          gridX = snapshot.gridX; gridY = snapshot.gridY;
+          console.log(`Player ${id} (${playerName}) reconnected via reconnectId.`);
+        } else {
+          // New player
+          const takenChars = Object.values(players).map(p => p.character);
+          const preferred = msg.character;
+          char = (CHARACTER_KEYS.includes(preferred) && !takenChars.includes(preferred))
+            ? preferred
+            : (CHARACTER_KEYS.find(c => !takenChars.includes(c))
+              ?? CHARACTER_KEYS[(id - 1) % CHARACTER_KEYS.length]);
+          playerName = (msg.name || `Joueur ${id}`).slice(0, 16);
+          const startGridX = 2 + ((id - 1) % 8) * 2;
+          const startGridY = 2;
+          x = startGridX * GRID_SIZE + GRID_SIZE / 2;
+          y = startGridY * GRID_SIZE + GRID_SIZE / 2;
+          gridX = startGridX; gridY = startGridY;
+        }
+
         player = {
           id,
-          name: (msg.name || `Joueur ${id}`).slice(0, 16),
+          name: playerName,
           character: char,
           color: CHARACTER_COLORS[char],
-          x: startGridX * GRID_SIZE + GRID_SIZE / 2,
-          y: startGridY * GRID_SIZE + GRID_SIZE / 2,
+          x, y,
           vx: 0,
           vy: 0,
-          gridX: startGridX,
-          gridY: startGridY,
+          gridX, gridY,
           ws,
+          reconnectId,
         };
         players[id] = player;
+        if (reconnectId) reconnectMap[reconnectId] = player;
 
         ws.send(JSON.stringify({
           type: 'init',
@@ -328,6 +351,14 @@ function setupWebSocket(server) {
     ws.on('close', () => {
       if (player) {
         console.log(`Player ${player.id} (${player.name}) disconnected.`);
+        // Save position snapshot for reconnect (keep for 10 minutes)
+        if (player.reconnectId) {
+          reconnectMap[player.reconnectId] = {
+            name: player.name, character: player.character,
+            x: player.x, y: player.y, gridX: player.gridX, gridY: player.gridY,
+          };
+          setTimeout(() => { delete reconnectMap[player.reconnectId]; }, 10 * 60 * 1000);
+        }
         delete players[player.id];
         broadcastState();
         actionManager.handleRosterChange(players);
